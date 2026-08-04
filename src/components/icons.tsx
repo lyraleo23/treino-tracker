@@ -100,6 +100,13 @@ export const ResetIcon = (props: IconProps) => (
   </Icon>
 )
 
+export const NoteIcon = (props: IconProps) => (
+  <Icon {...props}>
+    <path d="M4 7h11M4 12h11M4 17h6" />
+    <path d="m16.5 16.5 4-4 1.5 1.5-4 4-2 .5z" />
+  </Icon>
+)
+
 export const ChartIcon = (props: IconProps) => (
   <Icon {...props}>
     <path d="M4 19V5M4 19h16" />

@@ -1,4 +1,4 @@
-import type { Target, WorkoutItem } from '../db/db'
+import type { BlockKind, SetBlock, Target } from '../db/db'
 
 const dateFormatter = new Intl.DateTimeFormat('pt-BR', {
   day: '2-digit',
@@ -54,8 +54,63 @@ export function formatTarget(target: Target): string {
 }
 
 /** "3 × 8–12 reps" */
-export function formatItemPlan(item: WorkoutItem): string {
-  return `${item.sets} × ${formatTarget(item.target)}`
+export function formatBlockPlan(block: SetBlock): string {
+  return `${block.sets} × ${formatTarget(block.target)}`
+}
+
+export const BLOCK_LABELS: Record<BlockKind, string> = {
+  warmup: 'Aquecimento',
+  feeder: 'Feeder Set',
+  working: 'Working Set',
+  top: 'Top Set',
+  backoff: 'Back-off Set',
+  drop: 'Drop Set',
+  amrap: 'Máximo de reps',
+}
+
+/**
+ * Rótulo do bloco. Sem nome próprio, numera dentro do mesmo tipo — como no
+ * plano em papel: "Feeder Set 1", "Feeder Set 2", "Working Set 1"...
+ */
+export function formatBlockLabel(block: SetBlock, blocks: SetBlock[]): string {
+  if (block.label?.trim()) return block.label.trim()
+
+  const sameKind = blocks.filter((other) => other.kind === block.kind)
+  const base = BLOCK_LABELS[block.kind]
+  if (sameKind.length < 2) return base
+
+  return `${base} ${sameKind.findIndex((other) => other.id === block.id) + 1}`
+}
+
+/** "2 feeder · 2 working · 8 séries" — resumo do exercício na lista do treino. */
+export function formatBlocksSummary(blocks: SetBlock[]): string {
+  if (blocks.length === 0) return 'sem blocos'
+
+  const counts = new Map<BlockKind, number>()
+  for (const block of blocks) {
+    counts.set(block.kind, (counts.get(block.kind) ?? 0) + 1)
+  }
+
+  const parts = [...counts.entries()].map(
+    ([kind, count]) => `${count} ${BLOCK_LABELS[kind].toLowerCase().replace(' set', '')}`,
+  )
+  const sets = blocks.reduce((sum, block) => sum + block.sets, 0)
+
+  return `${parts.join(' · ')} · ${sets} séries`
+}
+
+/** "1 min" · "2 a 3 min" · "45s" */
+export function formatRest(block: SetBlock): string | undefined {
+  if (block.restSeconds === undefined) return undefined
+
+  const asText = (seconds: number) =>
+    seconds % 60 === 0 ? `${seconds / 60} min` : `${seconds}s`
+
+  if (block.restSecondsMax !== undefined && block.restSecondsMax !== block.restSeconds) {
+    const min = block.restSeconds % 60 === 0 ? String(block.restSeconds / 60) : `${block.restSeconds}s`
+    return `${min} a ${asText(block.restSecondsMax)}`
+  }
+  return asText(block.restSeconds)
 }
 
 /** Valor inicial de reps sugerido pelo alvo. */

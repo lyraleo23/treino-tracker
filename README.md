@@ -5,16 +5,25 @@ sem backend e sem cadastro. Todos os dados ficam no próprio aparelho (IndexedDB
 
 ## O que faz
 
-- **Treinos A, B, C...** com exercícios ordenados, número de séries e alvo por
-  exercício: repetições fixas (12), faixa (8–12) ou tempo (60s).
+- **Treinos A, B, C...** com exercícios ordenados.
+- **Blocos de séries** dentro de cada exercício — aquecimento, feeder, working, top,
+  back-off, drop e falha. Cada bloco tem o próprio número de séries, alvo
+  (repetições fixas, faixa 8–10 ou tempo) e intervalo entre séries. O modelo
+  *Feeder + Working* monta a estrutura de uma vez: 2×5–6 · 2×5–6 · 2×8–10 · 2×8–10.
 - **Catálogo global de exercícios**: o exercício existe uma vez só e é referenciado
   pelos treinos. Por isso **o peso usado é lembrado em qualquer treino ou sessão** —
   registrou 40 kg no supino do Treino A, ele aparece pré-preenchido no Treino B.
-- **Sessões**: executa o treino registrando peso e repetições/tempo reais, com
-  cronômetro regressivo para os exercícios de tempo.
-- **Histórico e evolução**: lista de sessões e, por exercício, gráfico de peso
-  máximo / volume / repetições (ou tempo) ao longo das sessões.
-- **Backup**: exportar e importar tudo em JSON.
+- **Sessões**: registra peso, repetições/tempo e observação em cada série, com
+  cronômetro regressivo nos blocos de tempo.
+- **Sugestão de progressão**: quando todas as séries dos blocos de *working* fecham o
+  topo da faixa, a sessão seguinte oferece subir **2,5 kg ou 5 kg**. O aumento vale
+  para o exercício inteiro — feeders e aquecimento sobem junto, cada bloco a partir do
+  próprio peso anterior, mantendo a proporção entre eles.
+- **Histórico e evolução**: lista de sessões, detalhe agrupado por bloco com as notas
+  do treino (sensação geral, pontos fortes, pontos a melhorar) e, por exercício,
+  gráfico de peso máximo / volume / repetições ao longo das sessões.
+- **Backup**: exportar e importar tudo em JSON (arquivos da v1 são convertidos na
+  importação).
 
 ## Rodando localmente
 
@@ -60,12 +69,17 @@ de trocar de aparelho.
 
 ```
 src/
-  db/          Dexie: schema, consultas, mutações, backup e seed do catálogo
-  pages/       uma tela por rota (treinos, sessão, histórico, exercícios, ajustes)
+  db/          Dexie: schema e migrações, consultas, mutações, backup e seed
+  pages/       uma tela por rota (treinos, blocos do exercício, sessão,
+               histórico, catálogo, ajustes)
   components/  peças reutilizáveis (modais, timer, shell, ícones)
   hooks/       cronômetro por timestamp e wake lock
   lib/         formatação pt-BR, ids e feedback sonoro
 ```
+
+O modelo de dados vai de `Workout → WorkoutItem → SetBlock → SetLog`. O `SetLog`
+guarda `exerciseId` (peso lembrado entre treinos) **e** `blockId` (peso lembrado por
+bloco, para o feeder não herdar a carga do working).
 
 ## Stack
 

@@ -2,22 +2,21 @@ import { useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { useLiveQuery } from 'dexie-react-hooks'
 import Dexie from 'dexie'
-import { db, type Exercise, type WorkoutItem } from '../db/db'
+import { db, type Exercise } from '../db/db'
 import {
   addWorkoutItem,
   deleteWorkout,
   deleteWorkoutItem,
   moveWorkoutItem,
   renameWorkout,
-  updateWorkoutItem,
+  type BlockPreset,
 } from '../db/actions'
 import { PageHeader } from '../components/PageHeader'
 import { EmptyState } from '../components/EmptyState'
 import { ConfirmDialog, Modal } from '../components/Modal'
 import { ExercisePicker } from '../components/ExercisePicker'
-import { WorkoutItemModal } from '../components/WorkoutItemModal'
-import { ArrowDownIcon, ArrowUpIcon, PlusIcon } from '../components/icons'
-import { formatItemPlan } from '../lib/format'
+import { ArrowDownIcon, ArrowUpIcon, PlusIcon, TrashIcon } from '../components/icons'
+import { formatBlocksSummary } from '../lib/format'
 
 export function WorkoutEditPage() {
   const { workoutId } = useParams<{ workoutId: string }>()
@@ -25,10 +24,7 @@ export function WorkoutEditPage() {
 
   const [picking, setPicking] = useState(false)
   const [pendingExercise, setPendingExercise] = useState<Exercise | null>(null)
-  const [editingItem, setEditingItem] = useState<{
-    item: WorkoutItem
-    exercise: Exercise
-  } | null>(null)
+  const [removingItem, setRemovingItem] = useState<{ id: string; name: string } | null>(null)
   const [renaming, setRenaming] = useState(false)
   const [name, setName] = useState('')
   const [confirmDelete, setConfirmDelete] = useState(false)
@@ -44,10 +40,27 @@ export function WorkoutEditPage() {
       .toArray()
 
     const exercises = await db.exercises.bulkGet(items.map((i) => i.exerciseId))
-    const rows = items.map((item, index) => ({ item, exercise: exercises[index] }))
+    const rows = await Promise.all(
+      items.map(async (item, index) => ({
+        item,
+        exercise: exercises[index],
+        blocks: await db.setBlocks
+          .where('[workoutItemId+order]')
+          .between([item.id, Dexie.minKey], [item.id, Dexie.maxKey])
+          .toArray(),
+      })),
+    )
 
     return { workout, rows }
   }, [workoutId])
+
+  async function handleAdd(exercise: Exercise, preset?: BlockPreset) {
+    if (!workoutId) return
+    const itemId = await addWorkoutItem({ workoutId, exerciseId: exercise.id, preset })
+    setPendingExercise(null)
+    // Sem modelo o exercício nasce vazio, então já abre a tela de montagem.
+    if (!preset) navigate(`/treinos/${workoutId}/item/${itemId}`)
+  }
 
   if (data === null) {
     return (
@@ -101,7 +114,7 @@ export function WorkoutEditPage() {
           />
         ) : (
           <div className="stack">
-            {rows.map(({ item, exercise }, index) => (
+            {rows.map(({ item, exercise, blocks }, index) => (
               <div key={item.id} className="card card--tight">
                 <div className="row row--between">
                   <button
@@ -114,12 +127,12 @@ export function WorkoutEditPage() {
                       textAlign: 'left',
                       cursor: 'pointer',
                     }}
-                    onClick={() =>
-                      exercise && setEditingItem({ item, exercise })
-                    }
+                    onClick={() => navigate(`/treinos/${workoutId}/item/${item.id}`)}
                   >
-                    <div className="list__name">{exercise?.name ?? 'Exercício removido'}</div>
-                    <div className="list__meta">{formatItemPlan(item)}</div>
+                    <div className="list__name">
+                      {exercise?.name ?? 'Exercício removido'}
+                    </div>
+                    <div className="list__meta">{formatBlocksSummary(blocks)}</div>
                   </button>
                   <div className="row" style={{ gap: 4 }}>
                     <button
@@ -139,6 +152,19 @@ export function WorkoutEditPage() {
                       onClick={() => void moveWorkoutItem(item.id, 1)}
                     >
                       <ArrowDownIcon />
+                    </button>
+                    <button
+                      type="button"
+                      className="btn btn--icon btn--ghost"
+                      aria-label="Remover do treino"
+                      onClick={() =>
+                        setRemovingItem({
+                          id: item.id,
+                          name: exercise?.name ?? 'este exercício',
+                        })
+                      }
+                    >
+                      <TrashIcon />
                     </button>
                   </div>
                 </div>
@@ -183,34 +209,70 @@ export function WorkoutEditPage() {
         />
       )}
 
-      {pendingExercise && workoutId && (
-        <WorkoutItemModal
-          exercise={pendingExercise}
+      {pendingExercise && (
+        <Modal
+          title={pendingExercise.name}
           onClose={() => setPendingExercise(null)}
-          onSave={async ({ sets, target }) => {
-            await addWorkoutItem({
-              workoutId,
-              exerciseId: pendingExercise.id,
-              sets,
-              target,
-            })
-            setPendingExercise(null)
-          }}
-        />
+          actions={
+            <button
+              type="button"
+              className="btn btn--ghost btn--block"
+              onClick={() => setPendingExercise(null)}
+            >
+              Cancelar
+            </button>
+          }
+        >
+          <p className="hint" style={{ marginTop: 0 }}>
+            Como montar os blocos de séries deste exercício?
+          </p>
+          <div className="stack">
+            <button
+              type="button"
+              className="btn btn--block btn--primary"
+              onClick={() => void handleAdd(pendingExercise, 'feederWorking')}
+            >
+              Feeder + Working
+              <span className="hint" style={{ marginLeft: 6 }}>
+                2×5–6, 2×5–6, 2×8–10, 2×8–10
+              </span>
+            </button>
+            <button
+              type="button"
+              className="btn btn--block"
+              onClick={() =>
+                void handleAdd(
+                  pendingExercise,
+                  pendingExercise.kind === 'time' ? 'time' : 'simple',
+                )
+              }
+            >
+              Simples
+              <span className="hint" style={{ marginLeft: 6 }}>
+                {pendingExercise.kind === 'time' ? '3 × 60s' : '3 × 8–12'}
+              </span>
+            </button>
+            <button
+              type="button"
+              className="btn btn--block"
+              onClick={() => void handleAdd(pendingExercise)}
+            >
+              Montar do zero
+            </button>
+          </div>
+        </Modal>
       )}
 
-      {editingItem && (
-        <WorkoutItemModal
-          exercise={editingItem.exercise}
-          item={editingItem.item}
-          onClose={() => setEditingItem(null)}
-          onSave={async ({ sets, target }) => {
-            await updateWorkoutItem(editingItem.item.id, { sets, target })
-            setEditingItem(null)
-          }}
-          onRemove={async () => {
-            await deleteWorkoutItem(editingItem.item.id)
-            setEditingItem(null)
+      {removingItem && (
+        <ConfirmDialog
+          title="Remover do treino"
+          message={`${removingItem.name} sai deste treino junto com os blocos configurados. O histórico das sessões continua.`}
+          confirmLabel="Remover"
+          danger
+          onCancel={() => setRemovingItem(null)}
+          onConfirm={async () => {
+            await deleteWorkoutItem(removingItem.id)
+            setRemovingItem(null)
           }}
         />
       )}

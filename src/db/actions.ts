@@ -4,8 +4,8 @@ import {
   type Exercise,
   type ExerciseKind,
   type Session,
+  type SetBlock,
   type SetLog,
-  type Target,
   type Workout,
   type WorkoutItem,
 } from './db'
@@ -97,9 +97,7 @@ export async function moveWorkout(id: string, direction: -1 | 1): Promise<void> 
 export async function addWorkoutItem(data: {
   workoutId: string
   exerciseId: string
-  sets: number
-  target: Target
-  restSeconds?: number
+  preset?: BlockPreset
 }): Promise<string> {
   const last = await db.workoutItems
     .where('[workoutId+order]')
@@ -111,23 +109,19 @@ export async function addWorkoutItem(data: {
     workoutId: data.workoutId,
     exerciseId: data.exerciseId,
     order: (last?.order ?? -1) + 1,
-    sets: data.sets,
-    target: data.target,
-    restSeconds: data.restSeconds,
   }
   await db.workoutItems.add(item)
+
+  if (data.preset) await applyPreset(item.id, data.preset)
   return item.id
 }
 
-export async function updateWorkoutItem(
-  id: string,
-  data: Partial<Pick<WorkoutItem, 'sets' | 'target' | 'restSeconds'>>,
-): Promise<void> {
-  await db.workoutItems.update(id, data)
-}
-
+/** Remove o exercício do treino junto com os blocos que só existiam nele. */
 export async function deleteWorkoutItem(id: string): Promise<void> {
-  await db.workoutItems.delete(id)
+  await db.transaction('rw', db.workoutItems, db.setBlocks, async () => {
+    await db.setBlocks.where('workoutItemId').equals(id).delete()
+    await db.workoutItems.delete(id)
+  })
 }
 
 export async function moveWorkoutItem(id: string, direction: -1 | 1): Promise<void> {
@@ -147,6 +141,144 @@ export async function moveWorkoutItem(id: string, direction: -1 | 1): Promise<vo
     const other = siblings[target]!
     await db.workoutItems.update(item.id, { order: other.order })
     await db.workoutItems.update(other.id, { order: item.order })
+  })
+}
+
+// --- Blocos de séries ---------------------------------------------------
+
+export type BlockPreset = 'feederWorking' | 'simple' | 'time'
+
+type BlockDraft = Omit<SetBlock, 'id' | 'workoutItemId' | 'order'>
+
+/**
+ * Modelos prontos para não montar quatro blocos na mão a cada exercício.
+ * `feederWorking` reproduz a estrutura do plano Upper Body.
+ */
+const PRESETS: Record<BlockPreset, BlockDraft[]> = {
+  feederWorking: [
+    { kind: 'feeder', sets: 2, target: { kind: 'repsRange', min: 5, max: 6 }, restSeconds: 60 },
+    { kind: 'feeder', sets: 2, target: { kind: 'repsRange', min: 5, max: 6 }, restSeconds: 120 },
+    {
+      kind: 'working',
+      sets: 2,
+      target: { kind: 'repsRange', min: 8, max: 10 },
+      restSeconds: 120,
+      restSecondsMax: 180,
+    },
+    {
+      kind: 'working',
+      sets: 2,
+      target: { kind: 'repsRange', min: 8, max: 10 },
+      restSeconds: 120,
+      restSecondsMax: 180,
+    },
+  ],
+  simple: [
+    {
+      kind: 'working',
+      sets: 3,
+      target: { kind: 'repsRange', min: 8, max: 12 },
+      restSeconds: 120,
+    },
+  ],
+  time: [{ kind: 'working', sets: 3, target: { kind: 'time', seconds: 60 }, restSeconds: 60 }],
+}
+
+/** Bloco de aquecimento sugerido ao adicionar um do tipo warmup. */
+export const WARMUP_DEFAULT: BlockDraft = {
+  kind: 'warmup',
+  sets: 2,
+  target: { kind: 'repsRange', min: 15, max: 20 },
+  note: 'carga moderada',
+}
+
+async function nextBlockOrder(workoutItemId: string): Promise<number> {
+  const last = await db.setBlocks
+    .where('[workoutItemId+order]')
+    .between([workoutItemId, Dexie.minKey], [workoutItemId, Dexie.maxKey])
+    .last()
+  return (last?.order ?? -1) + 1
+}
+
+export async function addSetBlock(
+  workoutItemId: string,
+  draft: BlockDraft,
+): Promise<string> {
+  const block: SetBlock = {
+    ...draft,
+    id: newId(),
+    workoutItemId,
+    order: await nextBlockOrder(workoutItemId),
+  }
+  await db.setBlocks.add(block)
+  return block.id
+}
+
+export async function applyPreset(
+  workoutItemId: string,
+  preset: BlockPreset,
+): Promise<void> {
+  const start = await nextBlockOrder(workoutItemId)
+  const blocks: SetBlock[] = PRESETS[preset].map((draft, index) => ({
+    ...draft,
+    id: newId(),
+    workoutItemId,
+    order: start + index,
+  }))
+  await db.setBlocks.bulkAdd(blocks)
+}
+
+export async function updateSetBlock(
+  id: string,
+  data: Partial<BlockDraft>,
+): Promise<void> {
+  await db.setBlocks.update(id, data)
+}
+
+export async function deleteSetBlock(id: string): Promise<void> {
+  await db.setBlocks.delete(id)
+}
+
+/** Duplica o bloco logo após o original — atalho para "Working Set 2". */
+export async function duplicateSetBlock(id: string): Promise<void> {
+  await db.transaction('rw', db.setBlocks, async () => {
+    const block = await db.setBlocks.get(id)
+    if (!block) return
+
+    const siblings = await db.setBlocks
+      .where('[workoutItemId+order]')
+      .between([block.workoutItemId, Dexie.minKey], [block.workoutItemId, Dexie.maxKey])
+      .toArray()
+
+    // Abre espaço depois do original para a cópia entrar em seguida.
+    for (const sibling of siblings) {
+      if (sibling.order > block.order) {
+        await db.setBlocks.update(sibling.id, { order: sibling.order + 1 })
+      }
+    }
+
+    const { id: _ignored, ...rest } = block
+    await db.setBlocks.add({ ...rest, id: newId(), order: block.order + 1 })
+  })
+}
+
+export async function moveSetBlock(id: string, direction: -1 | 1): Promise<void> {
+  await db.transaction('rw', db.setBlocks, async () => {
+    const block = await db.setBlocks.get(id)
+    if (!block) return
+
+    const siblings = await db.setBlocks
+      .where('[workoutItemId+order]')
+      .between([block.workoutItemId, Dexie.minKey], [block.workoutItemId, Dexie.maxKey])
+      .toArray()
+
+    const index = siblings.findIndex((b) => b.id === id)
+    const target = index + direction
+    if (target < 0 || target >= siblings.length) return
+
+    const other = siblings[target]!
+    await db.setBlocks.update(block.id, { order: other.order })
+    await db.setBlocks.update(other.id, { order: block.order })
   })
 }
 
@@ -184,8 +316,22 @@ export async function discardSession(sessionId: string): Promise<void> {
   })
 }
 
-export async function updateSessionNotes(sessionId: string, notes: string): Promise<void> {
-  await db.sessions.update(sessionId, { notes: notes.trim() || undefined })
+type SessionNotes = Pick<
+  Session,
+  'notes' | 'feeling' | 'strongPoints' | 'improvePoints'
+>
+
+export async function updateSessionNotes(
+  sessionId: string,
+  data: SessionNotes,
+): Promise<void> {
+  const clean = (value?: string) => value?.trim() || undefined
+  await db.sessions.update(sessionId, {
+    notes: clean(data.notes),
+    feeling: clean(data.feeling),
+    strongPoints: clean(data.strongPoints),
+    improvePoints: clean(data.improvePoints),
+  })
 }
 
 // --- Séries registradas -------------------------------------------------
@@ -195,16 +341,19 @@ export async function saveSetLog(data: {
   sessionId: string
   exerciseId: string
   workoutItemId: string
+  blockId: string
   setIndex: number
   weight?: number
   reps?: number
   seconds?: number
+  note?: string
 }): Promise<string> {
   if (data.id) {
     await db.setLogs.update(data.id, {
       weight: data.weight,
       reps: data.reps,
       seconds: data.seconds,
+      note: data.note?.trim() || undefined,
     })
     return data.id
   }
@@ -214,10 +363,12 @@ export async function saveSetLog(data: {
     sessionId: data.sessionId,
     exerciseId: data.exerciseId,
     workoutItemId: data.workoutItemId,
+    blockId: data.blockId,
     setIndex: data.setIndex,
     weight: data.weight,
     reps: data.reps,
     seconds: data.seconds,
+    note: data.note?.trim() || undefined,
     completedAt: Date.now(),
   }
   await db.setLogs.add(log)

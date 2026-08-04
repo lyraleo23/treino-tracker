@@ -1,5 +1,5 @@
 import Dexie from 'dexie'
-import { db, type SetLog } from './db'
+import { db, type SetBlock, type SetLog, type Target } from './db'
 
 /**
  * Última série registrada para o exercício, considerando todo o histórico —
@@ -34,6 +34,108 @@ export async function getLastSetsForExercises(
     if (log) map.set(id, log)
   }
   return map
+}
+
+/** Última série registrada num bloco específico do treino. */
+export async function getLastSetForBlock(
+  blockId: string,
+  excludeSessionId?: string,
+): Promise<SetLog | undefined> {
+  const range = db.setLogs
+    .where('[blockId+completedAt]')
+    .between([blockId, Dexie.minKey], [blockId, Dexie.maxKey])
+    .reverse()
+
+  if (!excludeSessionId) return range.first()
+  return range.filter((log) => log.sessionId !== excludeSessionId).first()
+}
+
+/** Mapa blockId → última série, para pré-preencher a sessão de uma vez. */
+export async function getLastSetsForBlocks(
+  blockIds: string[],
+  excludeSessionId?: string,
+): Promise<Map<string, SetLog>> {
+  const entries = await Promise.all(
+    blockIds.map(
+      async (id) => [id, await getLastSetForBlock(id, excludeSessionId)] as const,
+    ),
+  )
+
+  const map = new Map<string, SetLog>()
+  for (const [id, log] of entries) {
+    if (log) map.set(id, log)
+  }
+  return map
+}
+
+/** Topo da faixa de repetições do alvo; undefined para alvos de tempo. */
+function topReps(target: Target): number | undefined {
+  if (target.kind === 'reps') return target.value
+  if (target.kind === 'repsRange') return target.max
+  return undefined
+}
+
+export interface ProgressionSuggestion {
+  exerciseId: string
+  sessionId: string
+  reason: string
+}
+
+/**
+ * Aplica a regra de progressão: se na última sessão finalizada todas as séries
+ * de todos os blocos de working (e top set) bateram o topo da faixa, é hora de
+ * subir a carga. Aquecimento e feeder não entram no critério — a faixa deles
+ * não mede evolução.
+ */
+export async function getProgressionSuggestion(
+  exerciseId: string,
+  blocks: SetBlock[],
+  excludeSessionId: string,
+): Promise<ProgressionSuggestion | null> {
+  const workingBlocks = blocks.filter(
+    (block) => block.kind === 'working' || block.kind === 'top',
+  )
+  if (workingBlocks.length === 0) return null
+
+  const logs = await db.setLogs
+    .where('[exerciseId+completedAt]')
+    .between([exerciseId, Dexie.minKey], [exerciseId, Dexie.maxKey])
+    .reverse()
+    .filter((log) => log.sessionId !== excludeSessionId)
+    .toArray()
+
+  const mostRecent = logs[0]
+  if (!mostRecent) return null
+
+  const session = await db.sessions.get(mostRecent.sessionId)
+  if (!session?.finishedAt) return null
+
+  const sessionLogs = logs.filter((log) => log.sessionId === session.id)
+  const reached: number[] = []
+  let hasWeight = false
+
+  for (const block of workingBlocks) {
+    const top = topReps(block.target)
+    if (top === undefined) return null
+
+    const blockLogs = sessionLogs.filter((log) => log.blockId === block.id)
+    // Menos séries do que o previsto significa treino incompleto, não progressão.
+    if (blockLogs.length < block.sets) return null
+
+    for (const log of blockLogs) {
+      if ((log.reps ?? 0) < top) return null
+      if ((log.weight ?? 0) > 0) hasWeight = true
+      reached.push(log.reps ?? 0)
+    }
+  }
+
+  if (!hasWeight) return null
+
+  return {
+    exerciseId,
+    sessionId: session.id,
+    reason: `Na última sessão você fechou o topo da faixa em todas as séries de working (${reached.join(', ')} reps).`,
+  }
 }
 
 /** Agregado de um exercício dentro de uma sessão — uma linha do gráfico. */

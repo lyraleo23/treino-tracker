@@ -2,16 +2,23 @@ import { useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { useLiveQuery } from 'dexie-react-hooks'
 import Dexie from 'dexie'
-import { db, type Exercise, type SetLog, type WorkoutItem } from '../db/db'
+import { db, type Exercise, type SetBlock, type SetLog, type WorkoutItem } from '../db/db'
 import { deleteSetLog, discardSession, finishSession, saveSetLog } from '../db/actions'
-import { getLastSetsForExercises } from '../db/queries'
+import {
+  getLastSetsForBlocks,
+  getLastSetsForExercises,
+  getProgressionSuggestion,
+  type ProgressionSuggestion,
+} from '../db/queries'
 import { PageHeader } from '../components/PageHeader'
 import { EmptyState } from '../components/EmptyState'
 import { ConfirmDialog } from '../components/Modal'
 import { TimerCell } from '../components/TimerCell'
-import { CheckIcon, PlusIcon } from '../components/icons'
+import { CheckIcon, NoteIcon, PlusIcon } from '../components/icons'
 import {
-  formatItemPlan,
+  formatBlockLabel,
+  formatBlockPlan,
+  formatRest,
   formatSeconds,
   formatWeight,
   parseNumber,
@@ -19,10 +26,16 @@ import {
   targetSeconds,
 } from '../lib/format'
 
-type Draft = { weight?: string; reps?: string; seconds?: string }
+type Draft = { weight?: string; reps?: string; seconds?: string; note?: string }
 type Drafts = Record<string, Draft>
 
-const rowKey = (itemId: string, setIndex: number) => `${itemId}#${setIndex}`
+interface Row {
+  item: WorkoutItem
+  exercise: Exercise
+  blocks: SetBlock[]
+}
+
+const rowKey = (blockId: string, setIndex: number) => `${blockId}#${setIndex}`
 
 /** Mostra número com vírgula, do jeito que se digita no teclado brasileiro. */
 function toInput(value: number | undefined): string {
@@ -36,6 +49,8 @@ export function SessionPage() {
 
   const [drafts, setDrafts] = useState<Drafts>({})
   const [extraSets, setExtraSets] = useState<Record<string, number>>({})
+  const [openNotes, setOpenNotes] = useState<Record<string, boolean>>({})
+  const [dismissed, setDismissed] = useState<Record<string, boolean>>({})
   const [confirmDiscard, setConfirmDiscard] = useState(false)
 
   const data = useLiveQuery(async () => {
@@ -49,17 +64,43 @@ export function SessionPage() {
       .toArray()
 
     const exercises = await db.exercises.bulkGet(items.map((i) => i.exerciseId))
-    const rows = items
-      .map((item, index) => ({ item, exercise: exercises[index] }))
-      .filter((row): row is { item: WorkoutItem; exercise: Exercise } => !!row.exercise)
+    const rows: Row[] = []
+    for (const [index, item] of items.entries()) {
+      const exercise = exercises[index]
+      if (!exercise) continue
+      rows.push({
+        item,
+        exercise,
+        blocks: await db.setBlocks
+          .where('[workoutItemId+order]')
+          .between([item.id, Dexie.minKey], [item.id, Dexie.maxKey])
+          .toArray(),
+      })
+    }
 
     const logs = await db.setLogs.where('sessionId').equals(sessionId).toArray()
-    const lastSets = await getLastSetsForExercises(
-      [...new Set(rows.map((r) => r.item.exerciseId))],
+    const allBlocks = rows.flatMap((row) => row.blocks)
+
+    const lastByBlock = await getLastSetsForBlocks(
+      allBlocks.map((block) => block.id),
+      sessionId,
+    )
+    const lastByExercise = await getLastSetsForExercises(
+      [...new Set(rows.map((row) => row.item.exerciseId))],
       sessionId,
     )
 
-    return { session, rows, logs, lastSets }
+    const suggestions = new Map<string, ProgressionSuggestion>()
+    for (const row of rows) {
+      const suggestion = await getProgressionSuggestion(
+        row.item.exerciseId,
+        row.blocks,
+        sessionId,
+      )
+      if (suggestion) suggestions.set(row.item.exerciseId, suggestion)
+    }
+
+    return { session, rows, logs, lastByBlock, lastByExercise, suggestions }
   }, [sessionId])
 
   function patchDraft(key: string, patch: Draft) {
@@ -79,11 +120,43 @@ export function SessionPage() {
 
   if (!data) return <div className="page page--flush" />
 
-  const { session, rows, logs, lastSets } = data
+  const { session, rows, logs, lastByBlock, lastByExercise, suggestions } = data
+
+  const setCountOf = (block: SetBlock) => {
+    const blockLogs = logs.filter((log) => log.blockId === block.id)
+    const maxIndex = blockLogs.reduce((max, log) => Math.max(max, log.setIndex), -1)
+    return Math.max(block.sets, maxIndex + 1) + (extraSets[block.id] ?? 0)
+  }
+
   const totalPlanned = rows.reduce(
-    (sum, { item }) => sum + Math.max(item.sets, 0) + (extraSets[item.id] ?? 0),
+    (sum, row) => sum + row.blocks.reduce((acc, block) => acc + setCountOf(block), 0),
     0,
   )
+
+  /**
+   * Sobe a carga de todos os blocos do exercício — feeders inclusive — cada um
+   * a partir do próprio peso anterior, para o feeder seguir mais leve que o
+   * working em vez de igualar a carga.
+   */
+  function applyProgression(row: Row, increment: number) {
+    setDrafts((current) => {
+      const next = { ...current }
+      for (const block of row.blocks) {
+        const base =
+          lastByBlock.get(block.id)?.weight ??
+          lastByExercise.get(row.item.exerciseId)?.weight
+        if (base === undefined) continue
+
+        const value = toInput(base + increment)
+        for (let index = 0; index < setCountOf(block); index += 1) {
+          const key = rowKey(block.id, index)
+          next[key] = { ...next[key], weight: value }
+        }
+      }
+      return next
+    })
+    setDismissed((current) => ({ ...current, [row.item.exerciseId]: true }))
+  }
 
   async function handleFinish() {
     if (!sessionId) return
@@ -99,7 +172,11 @@ export function SessionPage() {
         back
         backTo="/"
         action={
-          <button type="button" className="btn btn--sm btn--primary" onClick={() => void handleFinish()}>
+          <button
+            type="button"
+            className="btn btn--sm btn--primary"
+            onClick={() => void handleFinish()}
+          >
             Finalizar
           </button>
         }
@@ -115,152 +192,255 @@ export function SessionPage() {
         )}
 
         <div className="stack">
-          {rows.map(({ item, exercise }) => {
-            const itemLogs = logs.filter((log) => log.workoutItemId === item.id)
-            const maxIndex = itemLogs.reduce((max, log) => Math.max(max, log.setIndex), -1)
-            const setCount = Math.max(item.sets, maxIndex + 1) + (extraSets[item.id] ?? 0)
-            const isTimeRow = item.target.kind === 'time'
-            const last = lastSets.get(item.exerciseId)
-
-            // Peso sugerido: o da série anterior desta sessão, senão o último
-            // registrado para o exercício em qualquer treino.
-            let carryWeight = toInput(last?.weight)
+          {rows.map((row) => {
+            const { item, exercise, blocks } = row
+            const suggestion = suggestions.get(item.exerciseId)
 
             return (
               <section key={item.id} className="card">
-                <div className="row row--between">
-                  <button
-                    type="button"
-                    className="list__main"
-                    style={{
-                      background: 'none',
-                      border: 'none',
-                      padding: 0,
-                      textAlign: 'left',
-                      cursor: 'pointer',
-                    }}
-                    onClick={() => navigate(`/exercicios/${exercise.id}`)}
-                  >
-                    <div className="card__title">{exercise.name}</div>
-                    <div className="card__meta">{formatItemPlan(item)}</div>
-                  </button>
-                </div>
+                <button
+                  type="button"
+                  className="list__main"
+                  style={{
+                    background: 'none',
+                    border: 'none',
+                    padding: 0,
+                    textAlign: 'left',
+                    cursor: 'pointer',
+                  }}
+                  onClick={() => navigate(`/exercicios/${exercise.id}`)}
+                >
+                  <div className="card__title">{exercise.name}</div>
+                </button>
 
-                <p className="hint" style={{ margin: '6px 0 10px' }}>
-                  {last
-                    ? `Último: ${formatWeight(last.weight)}${
-                        last.reps ? ` × ${last.reps}` : ''
-                      }${last.seconds ? ` · ${formatSeconds(last.seconds)}` : ''}`
-                    : 'Primeira vez registrando este exercício.'}
-                </p>
+                {suggestion && !dismissed[item.exerciseId] && (
+                  <div className="banner" style={{ marginTop: 10, flexWrap: 'wrap' }}>
+                    <div className="banner__text">
+                      <strong>Hora de subir a carga</strong>
+                      {suggestion.reason}
+                    </div>
+                    <div className="row" style={{ gap: 6, width: '100%' }}>
+                      <button
+                        type="button"
+                        className="btn btn--sm btn--primary"
+                        onClick={() => applyProgression(row, 2.5)}
+                      >
+                        +2,5 kg
+                      </button>
+                      <button
+                        type="button"
+                        className="btn btn--sm btn--primary"
+                        onClick={() => applyProgression(row, 5)}
+                      >
+                        +5 kg
+                      </button>
+                      <button
+                        type="button"
+                        className="btn btn--sm btn--ghost"
+                        onClick={() =>
+                          setDismissed((current) => ({
+                            ...current,
+                            [item.exerciseId]: true,
+                          }))
+                        }
+                      >
+                        Agora não
+                      </button>
+                    </div>
+                  </div>
+                )}
 
-                <div className={isTimeRow ? 'set-heads set-heads--time' : 'set-heads'}>
-                  <span />
-                  <span>Peso (kg)</span>
-                  <span>{isTimeRow ? 'Tempo (s)' : 'Reps'}</span>
-                  <span />
-                </div>
+                {blocks.length === 0 && (
+                  <p className="hint">
+                    Este exercício não tem blocos configurados. Edite o treino para
+                    montá-los.
+                  </p>
+                )}
 
-                {Array.from({ length: setCount }, (_, setIndex) => {
-                  const key = rowKey(item.id, setIndex)
-                  const log = itemLogs.find((entry) => entry.setIndex === setIndex)
-                  const draft = drafts[key] ?? {}
+                {blocks.map((block) => {
+                  const isTimeRow = block.target.kind === 'time'
+                  const last = lastByBlock.get(block.id)
+                  const fallback = lastByExercise.get(item.exerciseId)
+                  const rest = formatRest(block)
+                  const blockLogs = logs.filter((log) => log.blockId === block.id)
 
-                  const weightValue =
-                    draft.weight ?? (log ? toInput(log.weight) : carryWeight)
-                  const repsValue =
-                    draft.reps ??
-                    (log ? toInput(log.reps) : toInput(last?.reps ?? targetReps(item.target)))
-                  const secondsValue =
-                    draft.seconds ??
-                    (log ? toInput(log.seconds) : toInput(targetSeconds(item.target)))
-
-                  carryWeight = weightValue
-
-                  const persist = (existing: SetLog | undefined) =>
-                    saveSetLog({
-                      id: existing?.id,
-                      sessionId: session.id,
-                      exerciseId: item.exerciseId,
-                      workoutItemId: item.id,
-                      setIndex,
-                      weight: parseNumber(weightValue),
-                      reps: isTimeRow ? undefined : parseNumber(repsValue),
-                      seconds: isTimeRow ? parseNumber(secondsValue) : undefined,
-                    })
+                  // Peso sugerido: o da série anterior deste bloco, senão o último
+                  // registrado no bloco, senão o último do exercício.
+                  let carryWeight = toInput((last ?? fallback)?.weight)
 
                   return (
-                    <div
-                      key={key}
-                      className={[
-                        'set-row',
-                        isTimeRow ? 'set-row--time' : '',
-                        log ? 'is-done' : '',
-                      ]
-                        .filter(Boolean)
-                        .join(' ')}
-                    >
-                      <span className="set-row__index">{setIndex + 1}</span>
+                    <div key={block.id} className={`block block--${block.kind}`}>
+                      <div className="block__title">
+                        {formatBlockLabel(block, blocks)}
+                      </div>
+                      <div className="block__meta">
+                        {formatBlockPlan(block)}
+                        {rest && ` · intervalo ${rest}`}
+                      </div>
+                      {block.note && <div className="block__hint">{block.note}</div>}
+                      <div className="block__hint">
+                        {last
+                          ? `Último: ${formatWeight(last.weight)}${
+                              last.reps ? ` × ${last.reps}` : ''
+                            }${last.seconds ? ` · ${formatSeconds(last.seconds)}` : ''}`
+                          : 'Primeira vez registrando este bloco.'}
+                      </div>
 
-                      <input
-                        className="input input--center"
-                        inputMode="decimal"
-                        placeholder="—"
-                        aria-label={`Peso da série ${setIndex + 1}`}
-                        value={weightValue}
-                        onChange={(event) => patchDraft(key, { weight: event.target.value })}
-                        onBlur={() => log && void persist(log)}
-                      />
+                      <div className={isTimeRow ? 'set-heads set-heads--time' : 'set-heads'}>
+                        <span />
+                        <span>Peso (kg)</span>
+                        <span>{isTimeRow ? 'Tempo (s)' : 'Reps'}</span>
+                        <span />
+                        <span />
+                      </div>
 
-                      {isTimeRow ? (
-                        <TimerCell
-                          targetSeconds={targetSeconds(item.target) ?? 60}
-                          value={secondsValue}
-                          onChange={(value) => patchDraft(key, { seconds: value })}
-                        />
-                      ) : (
-                        <input
-                          className="input input--center"
-                          inputMode="numeric"
-                          placeholder="—"
-                          aria-label={`Repetições da série ${setIndex + 1}`}
-                          value={repsValue}
-                          onChange={(event) => patchDraft(key, { reps: event.target.value })}
-                          onBlur={() => log && void persist(log)}
-                        />
-                      )}
+                      {Array.from({ length: setCountOf(block) }, (_, setIndex) => {
+                        const key = rowKey(block.id, setIndex)
+                        const log = blockLogs.find((entry) => entry.setIndex === setIndex)
+                        const draft = drafts[key] ?? {}
+
+                        const weightValue =
+                          draft.weight ?? (log ? toInput(log.weight) : carryWeight)
+                        const repsValue =
+                          draft.reps ??
+                          (log
+                            ? toInput(log.reps)
+                            : toInput(last?.reps ?? targetReps(block.target)))
+                        const secondsValue =
+                          draft.seconds ??
+                          (log ? toInput(log.seconds) : toInput(targetSeconds(block.target)))
+                        const noteValue = draft.note ?? log?.note ?? ''
+
+                        carryWeight = weightValue
+
+                        const persist = (existing: SetLog | undefined) =>
+                          saveSetLog({
+                            id: existing?.id,
+                            sessionId: session.id,
+                            exerciseId: item.exerciseId,
+                            workoutItemId: item.id,
+                            blockId: block.id,
+                            setIndex,
+                            weight: parseNumber(weightValue),
+                            reps: isTimeRow ? undefined : parseNumber(repsValue),
+                            seconds: isTimeRow ? parseNumber(secondsValue) : undefined,
+                            note: noteValue,
+                          })
+
+                        const noteOpen = openNotes[key] || noteValue.length > 0
+
+                        return (
+                          <div key={key}>
+                            <div
+                              className={[
+                                'set-row',
+                                isTimeRow ? 'set-row--time' : '',
+                                log ? 'is-done' : '',
+                              ]
+                                .filter(Boolean)
+                                .join(' ')}
+                            >
+                              <span className="set-row__index">{setIndex + 1}</span>
+
+                              <input
+                                className="input input--center"
+                                inputMode="decimal"
+                                placeholder="—"
+                                aria-label={`Peso da série ${setIndex + 1}`}
+                                value={weightValue}
+                                onChange={(event) =>
+                                  patchDraft(key, { weight: event.target.value })
+                                }
+                                onBlur={() => log && void persist(log)}
+                              />
+
+                              {isTimeRow ? (
+                                <TimerCell
+                                  targetSeconds={targetSeconds(block.target) ?? 60}
+                                  value={secondsValue}
+                                  onChange={(value) => patchDraft(key, { seconds: value })}
+                                />
+                              ) : (
+                                <input
+                                  className="input input--center"
+                                  inputMode="numeric"
+                                  placeholder="—"
+                                  aria-label={`Repetições da série ${setIndex + 1}`}
+                                  value={repsValue}
+                                  onChange={(event) =>
+                                    patchDraft(key, { reps: event.target.value })
+                                  }
+                                  onBlur={() => log && void persist(log)}
+                                />
+                              )}
+
+                              <button
+                                type="button"
+                                className={log ? 'check-btn is-done' : 'check-btn'}
+                                aria-label={
+                                  log
+                                    ? `Desfazer série ${setIndex + 1}`
+                                    : `Concluir série ${setIndex + 1}`
+                                }
+                                aria-pressed={!!log}
+                                onClick={() => {
+                                  if (log) void deleteSetLog(log.id)
+                                  else void persist(undefined)
+                                }}
+                              >
+                                <CheckIcon />
+                              </button>
+
+                              <button
+                                type="button"
+                                className={
+                                  noteValue ? 'note-btn has-note' : 'note-btn'
+                                }
+                                aria-label={`Observação da série ${setIndex + 1}`}
+                                aria-expanded={noteOpen}
+                                onClick={() =>
+                                  setOpenNotes((current) => ({
+                                    ...current,
+                                    [key]: !current[key],
+                                  }))
+                                }
+                              >
+                                <NoteIcon />
+                              </button>
+                            </div>
+
+                            {noteOpen && (
+                              <input
+                                className="input set-note"
+                                value={noteValue}
+                                placeholder="Observação da série"
+                                aria-label={`Texto da observação da série ${setIndex + 1}`}
+                                onChange={(event) =>
+                                  patchDraft(key, { note: event.target.value })
+                                }
+                                onBlur={() => log && void persist(log)}
+                              />
+                            )}
+                          </div>
+                        )
+                      })}
 
                       <button
                         type="button"
-                        className={log ? 'check-btn is-done' : 'check-btn'}
-                        aria-label={
-                          log ? `Desfazer série ${setIndex + 1}` : `Concluir série ${setIndex + 1}`
+                        className="btn btn--sm btn--ghost"
+                        style={{ marginTop: 8 }}
+                        onClick={() =>
+                          setExtraSets((current) => ({
+                            ...current,
+                            [block.id]: (current[block.id] ?? 0) + 1,
+                          }))
                         }
-                        aria-pressed={!!log}
-                        onClick={() => {
-                          if (log) void deleteSetLog(log.id)
-                          else void persist(undefined)
-                        }}
                       >
-                        <CheckIcon />
+                        <PlusIcon width={16} height={16} /> Série extra
                       </button>
                     </div>
                   )
                 })}
-
-                <button
-                  type="button"
-                  className="btn btn--sm btn--ghost"
-                  style={{ marginTop: 10 }}
-                  onClick={() =>
-                    setExtraSets((current) => ({
-                      ...current,
-                      [item.id]: (current[item.id] ?? 0) + 1,
-                    }))
-                  }
-                >
-                  <PlusIcon width={16} height={16} /> Série extra
-                </button>
               </section>
             )
           })}
