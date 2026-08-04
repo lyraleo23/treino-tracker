@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react'
-import { useNavigate, useParams } from 'react-router-dom'
+import { useLocation, useNavigate, useParams } from 'react-router-dom'
 import { useLiveQuery } from 'dexie-react-hooks'
 import {
   CartesianGrid,
@@ -18,6 +18,9 @@ import { PageHeader } from '../components/PageHeader'
 import { EmptyState } from '../components/EmptyState'
 import { ConfirmDialog } from '../components/Modal'
 import { ExerciseFormModal } from '../components/ExerciseFormModal'
+import { ExercisePhoto } from '../components/ExercisePhoto'
+import { VideoIcon } from '../components/icons'
+import { openExternal } from '../lib/image'
 import { formatDate, formatDateTime, formatNumber, formatSeconds } from '../lib/format'
 
 // Cores literais: presentation attributes de SVG não resolvem var() no Chrome,
@@ -91,9 +94,19 @@ function ChartTooltip({
   )
 }
 
+/** Origem opcional: consultar o exercício no meio do treino deve voltar para ele. */
+interface FromState {
+  from?: string
+  label?: string
+}
+
 export function ExerciseHistoryPage() {
   const { exerciseId } = useParams<{ exerciseId: string }>()
   const navigate = useNavigate()
+  const { state } = useLocation()
+  const origin = (state ?? {}) as FromState
+  const backTo = origin.from ?? '/exercicios'
+  const backLabel = origin.label ?? 'Exercícios'
   const [metricKey, setMetricKey] = useState<string | null>(null)
   const [editing, setEditing] = useState(false)
   const [confirmDelete, setConfirmDelete] = useState(false)
@@ -124,7 +137,7 @@ export function ExerciseHistoryPage() {
   if (exercise === null) {
     return (
       <>
-        <PageHeader title="Exercício" back backTo="/exercicios" />
+        <PageHeader title="Exercício" back backTo={backTo} backLabel={backLabel} />
         <div className="page">
           <EmptyState icon="🤔" title="Exercício não encontrado" />
         </div>
@@ -148,7 +161,8 @@ export function ExerciseHistoryPage() {
           .filter(Boolean)
           .join(' · ')}
         back
-        backTo="/exercicios"
+        backTo={backTo}
+        backLabel={backLabel}
         action={
           <button type="button" className="btn btn--sm" onClick={() => setEditing(true)}>
             Editar
@@ -157,8 +171,20 @@ export function ExerciseHistoryPage() {
       />
 
       <div className="page">
+        <ExercisePhoto photo={exercise.photo} name={exercise.name} variant="hero" />
+
+        {exercise.videoUrl && (
+          <button
+            type="button"
+            className="btn btn--block"
+            onClick={() => openExternal(exercise.videoUrl!)}
+          >
+            <VideoIcon /> Ver vídeo de execução
+          </button>
+        )}
+
         {exercise.notes && (
-          <p className="hint" style={{ marginTop: 0 }}>
+          <p className="hint" style={{ marginTop: 10 }}>
             {exercise.notes}
           </p>
         )}

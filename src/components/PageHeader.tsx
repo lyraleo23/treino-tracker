@@ -9,10 +9,22 @@ interface Props {
   back?: boolean
   /** Rota específica para o voltar; por padrão volta no histórico. */
   backTo?: string
+  /** Texto ao lado da seta: um ícone sozinho não deixa claro que dá para sair. */
+  backLabel?: string
+  /** Substitui a navegação padrão do voltar, para quem precisa limpar algo antes. */
+  onBack?: () => void
   action?: ReactNode
 }
 
-export function PageHeader({ title, subtitle, back, backTo, action }: Props) {
+export function PageHeader({
+  title,
+  subtitle,
+  back,
+  backTo,
+  backLabel,
+  onBack,
+  action,
+}: Props) {
   const navigate = useNavigate()
 
   return (
@@ -20,11 +32,16 @@ export function PageHeader({ title, subtitle, back, backTo, action }: Props) {
       {back && (
         <button
           type="button"
-          className="btn btn--icon btn--ghost"
-          aria-label="Voltar"
-          onClick={() => (backTo ? navigate(backTo) : navigate(-1))}
+          className={backLabel ? 'btn btn--sm btn--ghost back-btn' : 'btn btn--icon btn--ghost'}
+          aria-label={backLabel ? `Voltar para ${backLabel}` : 'Voltar'}
+          onClick={() => {
+            if (onBack) onBack()
+            else if (backTo) navigate(backTo)
+            else navigate(-1)
+          }}
         >
           <ChevronLeftIcon />
+          {backLabel}
         </button>
       )}
       <div className="header__titles">

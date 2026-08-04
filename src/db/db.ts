@@ -18,9 +18,19 @@ export interface Exercise {
   kind: ExerciseKind
   muscleGroup?: string
   notes?: string
+  /** Foto já redimensionada; guardada como Blob para funcionar offline. */
+  photo?: Blob
+  photoUpdatedAt?: number
+  /** Link para vídeo de execução, aberto fora do app. */
+  videoUrl?: string
   archived: Flag
   createdAt: number
 }
+
+/** Fim do ciclo do treino: por data-limite ou por número de sessões. */
+export type Cycle =
+  | { kind: 'date'; until: number }
+  | { kind: 'sessions'; target: number }
 
 /** Um treino: "Treino A", "Treino B"... */
 export interface Workout {
@@ -29,6 +39,9 @@ export interface Workout {
   order: number
   archived: Flag
   createdAt: number
+  cycle?: Cycle
+  /** Renovar o ciclo é só reposicionar isto; zera a contagem de sessões. */
+  cycleStartedAt?: number
 }
 
 export type Target =

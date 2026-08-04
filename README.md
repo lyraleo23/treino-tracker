@@ -22,8 +22,14 @@ sem backend e sem cadastro. Todos os dados ficam no próprio aparelho (IndexedDB
 - **Histórico e evolução**: lista de sessões, detalhe agrupado por bloco com as notas
   do treino (sensação geral, pontos fortes, pontos a melhorar) e, por exercício,
   gráfico de peso máximo / volume / repetições ao longo das sessões.
-- **Backup**: exportar e importar tudo em JSON (arquivos da v1 são convertidos na
-  importação).
+- **Foto e vídeo por exercício**: foto da câmera ou galeria, redimensionada e
+  guardada no próprio app (funciona offline), mais um link de vídeo aberto no
+  navegador com um toque durante o treino.
+- **Ciclo do treino**: data-limite ou número de sessões. O card mostra o progresso e
+  avisa quando o ciclo termina, sem nunca impedir de treinar.
+- **Backup**: dois caminhos separados — **importar plano** mescla e preserva todo o
+  histórico; **restaurar backup** substitui tudo. Arquivos de versões anteriores são
+  convertidos na importação.
 
 ## Rodando localmente
 

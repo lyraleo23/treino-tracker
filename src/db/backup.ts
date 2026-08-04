@@ -8,15 +8,19 @@ import {
   type WorkoutItem,
 } from './db'
 import { newId } from '../lib/id'
+import { blobToDataUrl, dataUrlToBlob } from '../lib/image'
 
 const FORMAT = 'treino-tracker-backup'
-const VERSION = 2
+const VERSION = 3
+
+/** No arquivo a foto vira data URL: Blob não sobrevive a JSON. */
+type ExerciseDoc = Omit<Exercise, 'photo'> & { photo?: string }
 
 export interface Backup {
   format: typeof FORMAT
   version: number
   exportedAt: string
-  exercises: Exercise[]
+  exercises: ExerciseDoc[]
   workouts: Workout[]
   workoutItems: WorkoutItem[]
   setBlocks: SetBlock[]
@@ -24,8 +28,8 @@ export interface Backup {
   setLogs: SetLog[]
 }
 
-export async function exportBackup(): Promise<Backup> {
-  const [exercises, workouts, workoutItems, setBlocks, sessions, setLogs] =
+export async function exportBackup(includePhotos = true): Promise<Backup> {
+  const [rawExercises, workouts, workoutItems, setBlocks, sessions, setLogs] =
     await Promise.all([
       db.exercises.toArray(),
       db.workouts.toArray(),
@@ -34,6 +38,13 @@ export async function exportBackup(): Promise<Backup> {
       db.sessions.toArray(),
       db.setLogs.toArray(),
     ])
+
+  const exercises: ExerciseDoc[] = await Promise.all(
+    rawExercises.map(async ({ photo, ...exercise }) => ({
+      ...exercise,
+      photo: includePhotos && photo ? await blobToDataUrl(photo) : undefined,
+    })),
+  )
 
   return {
     format: FORMAT,
@@ -100,11 +111,33 @@ function migrateToV2(backup: Backup): Backup {
   }
 }
 
+export type ImportMode = 'merge' | 'replace'
+
+/** Compara nomes ignorando maiúsculas, acentos e espaços sobrando. */
+function normalizeName(name: string): string {
+  // \p{Diacritic} evita depender de caracteres combinantes invisíveis no fonte.
+  const DIACRITICOS = /\p{Diacritic}/gu
+  return name
+    .trim()
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(DIACRITICOS, '')
+}
+
 /**
- * Restaura substituindo todo o conteúdo atual — importar é "voltar para este
- * backup", não mesclar duas bases (o que geraria ids duplicados).
+ * Converte as fotos de volta para Blob. Precisa acontecer **antes** de abrir a
+ * transação: esperar uma promise de fora do Dexie lá dentro encerra a transação.
  */
-export async function importBackup(raw: string): Promise<void> {
+async function toExercises(docs: ExerciseDoc[]): Promise<Exercise[]> {
+  return Promise.all(
+    docs.map(async ({ photo, ...exercise }) => ({
+      ...exercise,
+      photo: photo ? await dataUrlToBlob(photo) : undefined,
+    })),
+  )
+}
+
+function parseBackup(raw: string): Backup {
   const parsed: unknown = JSON.parse(raw)
   if (!isBackup(parsed)) {
     throw new Error('Arquivo não é um backup válido do Treino Tracker.')
@@ -112,8 +145,111 @@ export async function importBackup(raw: string): Promise<void> {
   if ((parsed.version ?? 1) > VERSION) {
     throw new Error('Backup gerado por uma versão mais nova do app.')
   }
+  return migrateToV2(parsed)
+}
 
-  const backup = migrateToV2(parsed)
+/**
+ * Mescla o arquivo com o que já existe, sem apagar o que ele não menciona.
+ * É o modo para receber um plano atualizado: sessões e séries — o histórico de
+ * carga, que não dá para recriar — só são tocadas se vierem no arquivo.
+ */
+export async function mergeBackup(raw: string): Promise<void> {
+  const backup = parseBackup(raw)
+  const exercisesFromFile = await toExercises(backup.exercises)
+
+  await db.transaction(
+    'rw',
+    [db.exercises, db.workouts, db.workoutItems, db.setBlocks, db.sessions, db.setLogs],
+    async () => {
+      const existentes = await db.exercises.toArray()
+      const porNome = new Map(existentes.map((e) => [normalizeName(e.name), e]))
+      const porId = new Map(existentes.map((e) => [e.id, e]))
+
+      // idNoArquivo → idNoBanco: é o que mantém o histórico colado no exercício
+      // certo em vez de criar uma cópia com outro id.
+      const mapaExercicios = new Map<string, string>()
+
+      for (const vindo of exercisesFromFile) {
+        const mesmoId = porId.get(vindo.id)
+        if (mesmoId) {
+          await db.exercises.put({ ...mesmoId, ...vindo })
+          mapaExercicios.set(vindo.id, vindo.id)
+          continue
+        }
+
+        const mesmoNome = porNome.get(normalizeName(vindo.name))
+        if (mesmoNome) {
+          // Preserva nome e tipo do que já existe; só preenche o que falta.
+          await db.exercises.update(mesmoNome.id, {
+            muscleGroup: mesmoNome.muscleGroup ?? vindo.muscleGroup,
+            notes: mesmoNome.notes ?? vindo.notes,
+            videoUrl: mesmoNome.videoUrl ?? vindo.videoUrl,
+            photo: mesmoNome.photo ?? vindo.photo,
+          })
+          mapaExercicios.set(vindo.id, mesmoNome.id)
+          continue
+        }
+
+        await db.exercises.put(vindo)
+        mapaExercicios.set(vindo.id, vindo.id)
+      }
+
+      const resolver = (id: string) => mapaExercicios.get(id) ?? id
+
+      await db.workouts.bulkPut(backup.workouts)
+
+      // Para cada treino do arquivo, os filhos passam a ser exatamente os do
+      // arquivo — mantendo os ids, para SetLog.blockId continuar válido.
+      for (const workout of backup.workouts) {
+        const itensDoArquivo = backup.workoutItems.filter((i) => i.workoutId === workout.id)
+        const idsDoArquivo = new Set(itensDoArquivo.map((i) => i.id))
+
+        const atuais = await db.workoutItems.where('workoutId').equals(workout.id).toArray()
+        for (const atual of atuais) {
+          if (!idsDoArquivo.has(atual.id)) {
+            await db.setBlocks.where('workoutItemId').equals(atual.id).delete()
+            await db.workoutItems.delete(atual.id)
+          }
+        }
+
+        await db.workoutItems.bulkPut(
+          itensDoArquivo.map((item) => ({ ...item, exerciseId: resolver(item.exerciseId) })),
+        )
+
+        for (const item of itensDoArquivo) {
+          const blocosDoArquivo = backup.setBlocks.filter((b) => b.workoutItemId === item.id)
+          const idsBlocos = new Set(blocosDoArquivo.map((b) => b.id))
+
+          const blocosAtuais = await db.setBlocks
+            .where('workoutItemId')
+            .equals(item.id)
+            .toArray()
+          for (const bloco of blocosAtuais) {
+            if (!idsBlocos.has(bloco.id)) await db.setBlocks.delete(bloco.id)
+          }
+
+          await db.setBlocks.bulkPut(blocosDoArquivo)
+        }
+      }
+
+      // Arquivo de plano vem sem histórico: nesse caso não se toca em nada.
+      if (backup.sessions.length > 0) await db.sessions.bulkPut(backup.sessions)
+      if (backup.setLogs.length > 0) {
+        await db.setLogs.bulkPut(
+          backup.setLogs.map((log) => ({ ...log, exerciseId: resolver(log.exerciseId) })),
+        )
+      }
+    },
+  )
+}
+
+/**
+ * Restaura substituindo todo o conteúdo atual — é o "voltar para este backup",
+ * usado só na restauração completa.
+ */
+export async function importBackup(raw: string): Promise<void> {
+  const backup = parseBackup(raw)
+  const exercises = await toExercises(backup.exercises)
 
   await db.transaction(
     'rw',
@@ -128,7 +264,7 @@ export async function importBackup(raw: string): Promise<void> {
         db.setLogs.clear(),
       ])
       await Promise.all([
-        db.exercises.bulkAdd(backup.exercises),
+        db.exercises.bulkAdd(exercises),
         db.workouts.bulkAdd(backup.workouts),
         db.workoutItems.bulkAdd(backup.workoutItems),
         db.setBlocks.bulkAdd(backup.setBlocks),

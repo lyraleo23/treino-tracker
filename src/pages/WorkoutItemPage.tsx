@@ -42,7 +42,12 @@ export function WorkoutItemPage() {
   if (data === null) {
     return (
       <>
-        <PageHeader title="Exercício" back backTo={`/treinos/${workoutId}`} />
+        <PageHeader
+          title="Exercício"
+          back
+          backTo={`/treinos/${workoutId}`}
+          backLabel="Treino"
+        />
         <div className="page">
           <EmptyState icon="🤔" title="Exercício não encontrado neste treino" />
         </div>
@@ -61,6 +66,7 @@ export function WorkoutItemPage() {
         subtitle={`${blocks.length} ${blocks.length === 1 ? 'bloco' : 'blocos'} de séries`}
         back
         backTo={`/treinos/${workoutId}`}
+        backLabel="Treino"
         action={
           <button
             type="button"

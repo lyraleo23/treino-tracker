@@ -47,6 +47,13 @@ button {
   color: inherit;
 }
 
+/* Rede de segurança: nenhum ícone de botão pode nascer sem tamanho. */
+button svg {
+  width: 20px;
+  height: 20px;
+  flex: none;
+}
+
 h1,
 h2,
 h3 {
@@ -240,6 +247,15 @@ h3 {
   font-size: 17px;
 }
 
+.back-btn {
+  padding-left: 6px;
+  padding-right: 10px;
+  gap: 2px;
+  color: var(--accent);
+  max-width: 42%;
+  overflow: hidden;
+}
+
 .link-btn {
   background: none;
   border: none;
@@ -391,6 +407,41 @@ h3 {
   color: var(--block-color, var(--text));
 }
 
+/* Cabeçalho que abre e fecha a lista de séries. */
+.collapse-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex: 1;
+  min-width: 0;
+  padding: 2px 0;
+  background: none;
+  border: none;
+  text-align: left;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.caret {
+  display: inline-block;
+  width: 16px;
+  flex: none;
+  color: var(--text-faint);
+  font-size: 17px;
+  line-height: 1;
+  transition: transform 0.15s ease;
+}
+
+.caret.is-open {
+  transform: rotate(90deg);
+}
+
+.block__check {
+  color: var(--accent);
+  width: 16px;
+  height: 16px;
+}
+
 .block__meta {
   color: var(--text-dim);
   font-size: 13px;
@@ -401,6 +452,55 @@ h3 {
   color: var(--text-faint);
   font-size: 12px;
   margin: 2px 0 6px;
+}
+
+/* --- Fotos ----------------------------------------------------------- */
+
+.photo-preview {
+  width: 76px;
+  height: 76px;
+  flex: none;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border);
+  object-fit: cover;
+  background: var(--surface-2);
+}
+
+.photo-preview--empty {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-faint);
+  font-size: 12px;
+}
+
+.thumb {
+  width: 40px;
+  height: 40px;
+  flex: none;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  object-fit: cover;
+  background: var(--surface-2);
+  cursor: pointer;
+}
+
+.photo-full {
+  width: 100%;
+  max-height: 60dvh;
+  object-fit: contain;
+  border-radius: var(--radius);
+  background: var(--surface-2);
+}
+
+.photo-hero {
+  width: 100%;
+  max-height: 220px;
+  object-fit: cover;
+  border-radius: var(--radius);
+  border: 1px solid var(--border);
+  margin-bottom: 12px;
+  cursor: pointer;
 }
 
 /* --- Etiquetas ------------------------------------------------------- */
@@ -420,6 +520,11 @@ h3 {
 .chip--accent {
   background: var(--accent-soft);
   color: var(--accent);
+}
+
+.chip--warn {
+  background: rgba(251, 191, 36, 0.14);
+  color: var(--warn);
 }
 
 /* --- Estados --------------------------------------------------------- */
@@ -488,6 +593,7 @@ h3 {
 .tab svg {
   width: 22px;
   height: 22px;
+  flex: none;
 }
 
 .tab.is-active {

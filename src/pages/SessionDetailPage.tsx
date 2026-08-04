@@ -82,7 +82,7 @@ export function SessionDetailPage() {
   if (data === null) {
     return (
       <>
-        <PageHeader title="Sessão" back backTo="/historico" />
+        <PageHeader title="Sessão" back backTo="/historico" backLabel="Histórico" />
         <div className="page">
           <EmptyState icon="🤔" title="Sessão não encontrada" />
         </div>
@@ -122,6 +122,7 @@ export function SessionDetailPage() {
         subtitle={formatDateTime(session.startedAt)}
         back
         backTo="/historico"
+        backLabel="Histórico"
       />
 
       <div className="page">

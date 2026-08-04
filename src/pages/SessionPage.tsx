@@ -14,7 +14,9 @@ import { PageHeader } from '../components/PageHeader'
 import { EmptyState } from '../components/EmptyState'
 import { ConfirmDialog } from '../components/Modal'
 import { TimerCell } from '../components/TimerCell'
-import { CheckIcon, NoteIcon, PlusIcon } from '../components/icons'
+import { ExercisePhoto } from '../components/ExercisePhoto'
+import { ChartIcon, CheckIcon, NoteIcon, PlusIcon, VideoIcon } from '../components/icons'
+import { openExternal } from '../lib/image'
 import {
   formatBlockLabel,
   formatBlockPlan,
@@ -52,6 +54,10 @@ export function SessionPage() {
   const [openNotes, setOpenNotes] = useState<Record<string, boolean>>({})
   const [dismissed, setDismissed] = useState<Record<string, boolean>>({})
   const [confirmDiscard, setConfirmDiscard] = useState(false)
+  // Só guardam o que o usuário abriu/fechou na mão; o resto é derivado do
+  // progresso, o que faz o bloco concluído fechar e o próximo abrir sozinho.
+  const [openBlocks, setOpenBlocks] = useState<Record<string, boolean>>({})
+  const [openExercises, setOpenExercises] = useState<Record<string, boolean>>({})
 
   const data = useLiveQuery(async () => {
     if (!sessionId) return null
@@ -110,7 +116,7 @@ export function SessionPage() {
   if (data === null) {
     return (
       <>
-        <PageHeader title="Sessão" back backTo="/" />
+        <PageHeader title="Sessão" back backTo="/" backLabel="Treinos" />
         <div className="page page--flush">
           <EmptyState icon="🤔" title="Sessão não encontrada" />
         </div>
@@ -132,6 +138,50 @@ export function SessionPage() {
     (sum, row) => sum + row.blocks.reduce((acc, block) => acc + setCountOf(block), 0),
     0,
   )
+
+  const isBlockDone = (block: SetBlock) =>
+    logs.filter((log) => log.blockId === block.id).length >= setCountOf(block)
+
+  const isExerciseDone = (row: Row) =>
+    row.blocks.length > 0 && row.blocks.every(isBlockDone)
+
+  // O primeiro bloco ainda incompleto do treino é o que fica aberto por padrão:
+  // ao concluir um bloco, ele sai daqui e o seguinte assume — sem estado extra.
+  const currentBlockId = rows
+    .flatMap((row) => row.blocks)
+    .find((block) => !isBlockDone(block))?.id
+
+  const isBlockOpen = (block: SetBlock) =>
+    openBlocks[block.id] ?? block.id === currentBlockId
+
+  const isExerciseOpen = (row: Row) =>
+    openExercises[row.item.id] ?? !isExerciseDone(row)
+
+  /** Resumo do bloco fechado: "42,5 kg × 10, 10" ou "1:00, 0:45". */
+  function summarize(block: SetBlock): string {
+    const blockLogs = logs
+      .filter((log) => log.blockId === block.id)
+      .sort((a, b) => a.setIndex - b.setIndex)
+
+    if (blockLogs.length === 0) return 'nada registrado'
+
+    if (block.target.kind === 'time') {
+      return blockLogs.map((log) => formatSeconds(log.seconds ?? 0)).join(', ')
+    }
+
+    const weights = [...new Set(blockLogs.map((log) => log.weight ?? 0))]
+    const reps = blockLogs.map((log) => log.reps ?? 0).join(', ')
+
+    return weights.length === 1
+      ? `${formatWeight(weights[0])} × ${reps}`
+      : blockLogs.map((log) => `${formatWeight(log.weight)} × ${log.reps ?? 0}`).join(' · ')
+  }
+
+  async function handleLeave() {
+    // Entrou por engano e não registrou nada: não deixa sessão fantasma na home.
+    if (sessionId && logs.length === 0) await discardSession(sessionId)
+    navigate('/')
+  }
 
   /**
    * Sobe a carga de todos os blocos do exercício — feeders inclusive — cada um
@@ -170,7 +220,8 @@ export function SessionPage() {
         title={session.workoutName}
         subtitle={`${logs.length} de ${totalPlanned} séries registradas`}
         back
-        backTo="/"
+        backLabel="Treinos"
+        onBack={() => void handleLeave()}
         action={
           <button
             type="button"
@@ -196,24 +247,61 @@ export function SessionPage() {
             const { item, exercise, blocks } = row
             const suggestion = suggestions.get(item.exerciseId)
 
+            const done = isExerciseDone(row)
+            const expanded = isExerciseOpen(row)
+
             return (
               <section key={item.id} className="card">
-                <button
-                  type="button"
-                  className="list__main"
-                  style={{
-                    background: 'none',
-                    border: 'none',
-                    padding: 0,
-                    textAlign: 'left',
-                    cursor: 'pointer',
-                  }}
-                  onClick={() => navigate(`/exercicios/${exercise.id}`)}
-                >
-                  <div className="card__title">{exercise.name}</div>
-                </button>
+                <div className="row row--between">
+                  <button
+                    type="button"
+                    className="collapse-head"
+                    aria-expanded={expanded}
+                    onClick={() =>
+                      setOpenExercises((current) => ({
+                        ...current,
+                        [item.id]: !expanded,
+                      }))
+                    }
+                  >
+                    <span className={expanded ? 'caret is-open' : 'caret'}>›</span>
+                    <ExercisePhoto photo={exercise.photo} name={exercise.name} />
+                    <span className="card__title">{exercise.name}</span>
+                    {done && <span className="chip chip--accent">concluído</span>}
+                  </button>
+                  <div className="row" style={{ gap: 2 }}>
+                    {exercise.videoUrl && (
+                      <button
+                        type="button"
+                        className="btn btn--icon btn--ghost"
+                        aria-label={`Ver vídeo de ${exercise.name}`}
+                        onClick={() => openExternal(exercise.videoUrl!)}
+                      >
+                        <VideoIcon />
+                      </button>
+                    )}
+                    <button
+                      type="button"
+                      className="btn btn--icon btn--ghost"
+                      aria-label={`Ver evolução de ${exercise.name}`}
+                      onClick={() =>
+                        navigate(`/exercicios/${exercise.id}`, {
+                          state: { from: `/sessao/${session.id}`, label: 'Treino' },
+                        })
+                      }
+                    >
+                      <ChartIcon />
+                    </button>
+                  </div>
+                </div>
 
-                {suggestion && !dismissed[item.exerciseId] && (
+                {!expanded && (
+                  <p className="hint" style={{ margin: '4px 0 0 22px' }}>
+                    {blocks.filter(isBlockDone).length} de {blocks.length} blocos feitos
+                  </p>
+                )}
+
+                {expanded && suggestion && !dismissed[item.exerciseId] && (
                   <div className="banner" style={{ marginTop: 10, flexWrap: 'wrap' }}>
                     <div className="banner__text">
                       <strong>Hora de subir a carga</strong>
@@ -250,14 +338,14 @@ export function SessionPage() {
                   </div>
                 )}
 
-                {blocks.length === 0 && (
+                {expanded && blocks.length === 0 && (
                   <p className="hint">
                     Este exercício não tem blocos configurados. Edite o treino para
                     montá-los.
                   </p>
                 )}
 
-                {blocks.map((block) => {
+                {expanded && blocks.map((block) => {
                   const isTimeRow = block.target.kind === 'time'
                   const last = lastByBlock.get(block.id)
                   const fallback = lastByExercise.get(item.exerciseId)
@@ -268,11 +356,37 @@ export function SessionPage() {
                   // registrado no bloco, senão o último do exercício.
                   let carryWeight = toInput((last ?? fallback)?.weight)
 
+                  const blockDone = isBlockDone(block)
+                  const blockOpen = isBlockOpen(block)
+
                   return (
                     <div key={block.id} className={`block block--${block.kind}`}>
-                      <div className="block__title">
-                        {formatBlockLabel(block, blocks)}
-                      </div>
+                      <button
+                        type="button"
+                        className="collapse-head"
+                        aria-expanded={blockOpen}
+                        onClick={() =>
+                          setOpenBlocks((current) => ({
+                            ...current,
+                            [block.id]: !blockOpen,
+                          }))
+                        }
+                      >
+                        <span className={blockOpen ? 'caret is-open' : 'caret'}>›</span>
+                        <span className="block__title">
+                          {formatBlockLabel(block, blocks)}
+                        </span>
+                        {blockDone && <CheckIcon className="block__check" />}
+                      </button>
+
+                      {!blockOpen ? (
+                        <div className="block__meta" style={{ marginLeft: 22 }}>
+                          {blockDone
+                            ? summarize(block)
+                            : `${blockLogs.length} de ${setCountOf(block)} · ${formatBlockPlan(block)}`}
+                        </div>
+                      ) : (
+                        <>
                       <div className="block__meta">
                         {formatBlockPlan(block)}
                         {rest && ` · intervalo ${rest}`}
@@ -438,6 +552,8 @@ export function SessionPage() {
                       >
                         <PlusIcon width={16} height={16} /> Série extra
                       </button>
+                        </>
+                      )}
                     </div>
                   )
                 })}

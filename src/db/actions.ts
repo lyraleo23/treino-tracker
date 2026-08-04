@@ -1,6 +1,7 @@
 import Dexie from 'dexie'
 import {
   db,
+  type Cycle,
   type Exercise,
   type ExerciseKind,
   type Session,
@@ -18,6 +19,8 @@ export async function createExercise(data: {
   kind: ExerciseKind
   muscleGroup?: string
   notes?: string
+  videoUrl?: string
+  photo?: Blob
 }): Promise<string> {
   const exercise: Exercise = {
     id: newId(),
@@ -25,6 +28,9 @@ export async function createExercise(data: {
     kind: data.kind,
     muscleGroup: data.muscleGroup?.trim() || undefined,
     notes: data.notes?.trim() || undefined,
+    videoUrl: data.videoUrl?.trim() || undefined,
+    photo: data.photo,
+    photoUpdatedAt: data.photo ? Date.now() : undefined,
     archived: 0,
     createdAt: Date.now(),
   }
@@ -34,9 +40,22 @@ export async function createExercise(data: {
 
 export async function updateExercise(
   id: string,
-  data: Partial<Pick<Exercise, 'name' | 'kind' | 'muscleGroup' | 'notes' | 'archived'>>,
+  data: Partial<
+    Pick<
+      Exercise,
+      'name' | 'kind' | 'muscleGroup' | 'notes' | 'archived' | 'photo' | 'videoUrl'
+    >
+  >,
 ): Promise<void> {
   await db.exercises.update(id, data)
+}
+
+/** Passar `undefined` remove a foto. */
+export async function setExercisePhoto(id: string, photo: Blob | undefined): Promise<void> {
+  await db.exercises.update(id, {
+    photo,
+    photoUpdatedAt: photo ? Date.now() : undefined,
+  })
 }
 
 /**
@@ -52,7 +71,7 @@ export async function deleteExercise(id: string): Promise<void> {
 
 // --- Treinos ------------------------------------------------------------
 
-export async function createWorkout(name: string): Promise<string> {
+export async function createWorkout(name: string, cycle?: Cycle): Promise<string> {
   const last = await db.workouts.orderBy('order').last()
   const workout: Workout = {
     id: newId(),
@@ -60,13 +79,54 @@ export async function createWorkout(name: string): Promise<string> {
     order: (last?.order ?? -1) + 1,
     archived: 0,
     createdAt: Date.now(),
+    cycle,
+    cycleStartedAt: cycle ? Date.now() : undefined,
   }
   await db.workouts.add(workout)
   return workout.id
 }
 
-export async function renameWorkout(id: string, name: string): Promise<void> {
-  await db.workouts.update(id, { name: name.trim() })
+export async function updateWorkout(
+  id: string,
+  data: { name: string; cycle?: Cycle },
+): Promise<void> {
+  const current = await db.workouts.get(id)
+  if (!current) return
+
+  // Começou um ciclo agora (ou trocou o método): a contagem recomeça.
+  const cycleChanged = JSON.stringify(current.cycle) !== JSON.stringify(data.cycle)
+
+  await db.workouts.update(id, {
+    name: data.name.trim(),
+    cycle: data.cycle,
+    cycleStartedAt: data.cycle
+      ? cycleChanged
+        ? Date.now()
+        : (current.cycleStartedAt ?? Date.now())
+      : undefined,
+  })
+}
+
+/** Recomeça a contagem do ciclo mantendo o método escolhido. */
+export async function renewCycle(id: string): Promise<void> {
+  const workout = await db.workouts.get(id)
+  if (!workout?.cycle) return
+
+  const cycle: Cycle =
+    workout.cycle.kind === 'date'
+      ? // Data já passou: estende pelo mesmo tamanho do ciclo anterior.
+        {
+          kind: 'date',
+          until:
+            Date.now() +
+            Math.max(
+              7 * 86400000,
+              workout.cycle.until - (workout.cycleStartedAt ?? workout.createdAt),
+            ),
+        }
+      : workout.cycle
+
+  await db.workouts.update(id, { cycle, cycleStartedAt: Date.now() })
 }
 
 /** Apaga o treino e seus itens; as sessões já realizadas continuam no histórico. */

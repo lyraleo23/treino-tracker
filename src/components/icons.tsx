@@ -6,6 +6,11 @@ function Icon({ children, ...props }: IconProps) {
   return (
     <svg
       viewBox="0 0 24 24"
+      // Sem width/height explícitos o SVG assume o tamanho padrão do navegador
+      // (300×150) e é desenhado fora do botão. O spread vem depois para quem
+      // precisa de outro tamanho poder sobrescrever.
+      width={20}
+      height={20}
       fill="none"
       stroke="currentColor"
       strokeWidth="1.8"
@@ -97,6 +102,13 @@ export const ResetIcon = (props: IconProps) => (
   <Icon {...props}>
     <path d="M4.5 12a7.5 7.5 0 1 0 2.6-5.7" />
     <path d="M4 4v4h4" />
+  </Icon>
+)
+
+export const VideoIcon = (props: IconProps) => (
+  <Icon {...props}>
+    <rect x="3" y="6" width="12" height="12" rx="2.5" />
+    <path d="m15 11 5.5-3v8L15 13z" />
   </Icon>
 )
 

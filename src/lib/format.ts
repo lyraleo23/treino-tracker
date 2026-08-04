@@ -1,4 +1,4 @@
-import type { BlockKind, SetBlock, Target } from '../db/db'
+import type { BlockKind, Cycle, SetBlock, Target } from '../db/db'
 
 const dateFormatter = new Intl.DateTimeFormat('pt-BR', {
   day: '2-digit',
@@ -80,6 +80,34 @@ export function formatBlockLabel(block: SetBlock, blocks: SetBlock[]): string {
   if (sameKind.length < 2) return base
 
   return `${base} ${sameKind.findIndex((other) => other.id === block.id) + 1}`
+}
+
+export interface CycleStatus {
+  label: string
+  expired: boolean
+}
+
+/** "sessão 5 de 12" · "vence em 12 dias" · "ciclo concluído". */
+export function formatCycle(
+  cycle: Cycle | undefined,
+  doneSessions: number,
+): CycleStatus | undefined {
+  if (!cycle) return undefined
+
+  if (cycle.kind === 'sessions') {
+    const expired = doneSessions >= cycle.target
+    return {
+      label: expired
+        ? 'ciclo concluído'
+        : `sessão ${doneSessions + 1} de ${cycle.target}`,
+      expired,
+    }
+  }
+
+  const days = Math.ceil((cycle.until - Date.now()) / 86400000)
+  if (days < 0) return { label: 'ciclo vencido', expired: true }
+  if (days === 0) return { label: 'vence hoje', expired: false }
+  return { label: `vence em ${days} ${days === 1 ? 'dia' : 'dias'}`, expired: false }
 }
 
 /** "2 feeder · 2 working · 8 séries" — resumo do exercício na lista do treino. */

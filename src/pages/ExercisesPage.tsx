@@ -5,6 +5,7 @@ import { db, type Exercise } from '../db/db'
 import { PageHeader } from '../components/PageHeader'
 import { EmptyState } from '../components/EmptyState'
 import { ExerciseFormModal } from '../components/ExerciseFormModal'
+import { ExercisePhoto } from '../components/ExercisePhoto'
 import { PlusIcon } from '../components/icons'
 
 /** Agrupa por grupo muscular, deixando "Sem grupo" por último. */
@@ -108,6 +109,7 @@ export function ExercisesPage() {
                   className="list__item"
                   onClick={() => navigate(`/exercicios/${exercise.id}`)}
                 >
+                  <ExercisePhoto photo={exercise.photo} name={exercise.name} />
                   <div className="list__main">
                     <div className="list__name">{exercise.name}</div>
                     <div className="list__meta">

@@ -8,13 +8,14 @@ import {
   deleteWorkout,
   deleteWorkoutItem,
   moveWorkoutItem,
-  renameWorkout,
+  updateWorkout,
   type BlockPreset,
 } from '../db/actions'
 import { PageHeader } from '../components/PageHeader'
 import { EmptyState } from '../components/EmptyState'
 import { ConfirmDialog, Modal } from '../components/Modal'
 import { ExercisePicker } from '../components/ExercisePicker'
+import { WorkoutFormModal } from '../components/WorkoutFormModal'
 import { ArrowDownIcon, ArrowUpIcon, PlusIcon, TrashIcon } from '../components/icons'
 import { formatBlocksSummary } from '../lib/format'
 
@@ -26,7 +27,6 @@ export function WorkoutEditPage() {
   const [pendingExercise, setPendingExercise] = useState<Exercise | null>(null)
   const [removingItem, setRemovingItem] = useState<{ id: string; name: string } | null>(null)
   const [renaming, setRenaming] = useState(false)
-  const [name, setName] = useState('')
   const [confirmDelete, setConfirmDelete] = useState(false)
 
   const data = useLiveQuery(async () => {
@@ -65,7 +65,7 @@ export function WorkoutEditPage() {
   if (data === null) {
     return (
       <>
-        <PageHeader title="Treino" back backTo="/" />
+        <PageHeader title="Treino" back backTo="/" backLabel="Treinos" />
         <div className="page">
           <EmptyState icon="🤔" title="Treino não encontrado" />
         </div>
@@ -84,6 +84,7 @@ export function WorkoutEditPage() {
         subtitle={`${rows.length} ${rows.length === 1 ? 'exercício' : 'exercícios'}`}
         back
         backTo="/"
+        backLabel="Treinos"
         action={
           <button
             type="button"
@@ -178,12 +179,9 @@ export function WorkoutEditPage() {
           <button
             type="button"
             className="btn btn--block"
-            onClick={() => {
-              setName(workout.name)
-              setRenaming(true)
-            }}
+            onClick={() => setRenaming(true)}
           >
-            Renomear treino
+            Editar treino
           </button>
           <button
             type="button"
@@ -278,45 +276,14 @@ export function WorkoutEditPage() {
       )}
 
       {renaming && (
-        <Modal
-          title="Renomear treino"
+        <WorkoutFormModal
+          workout={workout}
           onClose={() => setRenaming(false)}
-          actions={
-            <>
-              <button
-                type="button"
-                className="btn btn--ghost"
-                onClick={() => setRenaming(false)}
-              >
-                Cancelar
-              </button>
-              <button
-                type="button"
-                className="btn btn--primary"
-                disabled={!name.trim()}
-                onClick={async () => {
-                  await renameWorkout(workout.id, name)
-                  setRenaming(false)
-                }}
-              >
-                Salvar
-              </button>
-            </>
-          }
-        >
-          <div className="field">
-            <label className="field__label" htmlFor="rename-workout">
-              Nome
-            </label>
-            <input
-              id="rename-workout"
-              className="input"
-              value={name}
-              autoFocus
-              onChange={(event) => setName(event.target.value)}
-            />
-          </div>
-        </Modal>
+          onSave={async ({ name, cycle }) => {
+            await updateWorkout(workout.id, { name, cycle })
+            setRenaming(false)
+          }}
+        />
       )}
 
       {confirmDelete && (

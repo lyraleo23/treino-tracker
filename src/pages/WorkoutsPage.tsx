@@ -1,24 +1,31 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useLiveQuery } from 'dexie-react-hooks'
-import { db, type Session, type Workout } from '../db/db'
-import { createWorkout, discardSession, moveWorkout, startSession } from '../db/actions'
+import { db, type Cycle, type Session, type Workout } from '../db/db'
+import {
+  createWorkout,
+  discardSession,
+  moveWorkout,
+  renewCycle,
+  startSession,
+} from '../db/actions'
 import { PageHeader } from '../components/PageHeader'
 import { EmptyState } from '../components/EmptyState'
 import { Modal } from '../components/Modal'
+import { WorkoutFormModal } from '../components/WorkoutFormModal'
 import { ArrowDownIcon, ArrowUpIcon, PlusIcon } from '../components/icons'
-import { formatDate } from '../lib/format'
+import { formatCycle, formatDate } from '../lib/format'
 
 interface WorkoutCard {
   workout: Workout
   exercises: number
   lastSession?: number
+  cycleDone: number
 }
 
 export function WorkoutsPage() {
   const navigate = useNavigate()
   const [creating, setCreating] = useState(false)
-  const [newName, setNewName] = useState('')
   const [conflict, setConflict] = useState<{ workout: Workout; open: Session } | null>(null)
 
   const data = useLiveQuery(async () => {
@@ -27,13 +34,16 @@ export function WorkoutsPage() {
     const sessions = await db.sessions.toArray()
 
     const cards: WorkoutCard[] = workouts.map((workout) => {
-      const done = sessions
-        .filter((s) => s.workoutId === workout.id && s.finishedAt !== undefined)
-        .map((s) => s.finishedAt!)
+      const finished = sessions.filter(
+        (s) => s.workoutId === workout.id && s.finishedAt !== undefined,
+      )
+      const done = finished.map((s) => s.finishedAt!)
+      const cycleStart = workout.cycleStartedAt ?? 0
       return {
         workout,
         exercises: items.filter((i) => i.workoutId === workout.id).length,
         lastSession: done.length > 0 ? Math.max(...done) : undefined,
+        cycleDone: finished.filter((s) => s.startedAt >= cycleStart).length,
       }
     })
 
@@ -58,11 +68,8 @@ export function WorkoutsPage() {
     navigate(`/sessao/${await startSession(workout)}`)
   }
 
-  async function handleCreate() {
-    const name = newName.trim()
-    if (!name) return
-    const id = await createWorkout(name)
-    setNewName('')
+  async function handleCreate(name: string, cycle?: Cycle) {
+    const id = await createWorkout(name, cycle)
     setCreating(false)
     navigate(`/treinos/${id}`)
   }
@@ -122,7 +129,9 @@ export function WorkoutsPage() {
         )}
 
         <div className="stack">
-          {cards.map(({ workout, exercises, lastSession }, index) => (
+          {cards.map(({ workout, exercises, lastSession, cycleDone }, index) => {
+            const cycle = formatCycle(workout.cycle, cycleDone)
+            return (
             <div key={workout.id} className="card">
               <div className="row row--between">
                 <div style={{ minWidth: 0 }}>
@@ -131,6 +140,14 @@ export function WorkoutsPage() {
                     {exercises} {exercises === 1 ? 'exercício' : 'exercícios'}
                     {lastSession ? ` · última: ${formatDate(lastSession)}` : ' · nunca feito'}
                   </div>
+                  {cycle && (
+                    <span
+                      className={cycle.expired ? 'chip chip--warn' : 'chip'}
+                      style={{ marginTop: 6 }}
+                    >
+                      {cycle.label}
+                    </span>
+                  )}
                 </div>
                 <div className="row" style={{ gap: 4 }}>
                   <button
@@ -178,49 +195,28 @@ export function WorkoutsPage() {
                   Adicione exercícios para poder iniciar.
                 </p>
               )}
+
+              {cycle?.expired && (
+                <button
+                  type="button"
+                  className="btn btn--sm btn--block"
+                  style={{ marginTop: 8 }}
+                  onClick={() => void renewCycle(workout.id)}
+                >
+                  Renovar ciclo
+                </button>
+              )}
             </div>
-          ))}
+            )
+          })}
         </div>
       </div>
 
       {creating && (
-        <Modal
-          title="Novo treino"
+        <WorkoutFormModal
           onClose={() => setCreating(false)}
-          actions={
-            <>
-              <button
-                type="button"
-                className="btn btn--ghost"
-                onClick={() => setCreating(false)}
-              >
-                Cancelar
-              </button>
-              <button
-                type="button"
-                className="btn btn--primary"
-                disabled={!newName.trim()}
-                onClick={() => void handleCreate()}
-              >
-                Criar
-              </button>
-            </>
-          }
-        >
-          <div className="field">
-            <label className="field__label" htmlFor="workout-name">
-              Nome
-            </label>
-            <input
-              id="workout-name"
-              className="input"
-              value={newName}
-              autoFocus
-              placeholder="Treino A"
-              onChange={(event) => setNewName(event.target.value)}
-            />
-          </div>
-        </Modal>
+          onSave={({ name, cycle }) => void handleCreate(name, cycle)}
+        />
       )}
 
       {conflict && (
