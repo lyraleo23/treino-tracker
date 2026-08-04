@@ -35,7 +35,10 @@ node scripts/generate-icons.mjs
 1. Crie o repositório no GitHub com o nome **`treino-tracker`** e envie o código.
    O nome importa: ele é o `base` do Vite em `vite.config.ts`. Usando outro nome,
    ajuste a constante `REPO` nesse arquivo.
-2. Em **Settings → Pages**, defina **Source: GitHub Actions**.
+2. O workflow habilita o Pages sozinho na primeira execução (`enablement: true`).
+   Se falhar com *"Get Pages site failed"*, habilite à mão em
+   **Settings → Pages → Source: GitHub Actions** e rode o workflow de novo.
+   Em conta gratuita isso só funciona com o repositório **público**.
 3. Cada `push` na branch `main` publica o app em
    `https://<seu-usuario>.github.io/treino-tracker/`.
 
