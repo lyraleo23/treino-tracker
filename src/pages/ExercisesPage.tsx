@@ -7,6 +7,7 @@ import { EmptyState } from '../components/EmptyState'
 import { ExerciseFormModal } from '../components/ExerciseFormModal'
 import { ExercisePhoto } from '../components/ExercisePhoto'
 import { PlusIcon } from '../components/icons'
+import { KIND_LABELS } from '../lib/format'
 
 /** Agrupa por grupo muscular, deixando "Sem grupo" por último. */
 function groupExercises(exercises: Exercise[]): [string, Exercise[]][] {
@@ -113,7 +114,7 @@ export function ExercisesPage() {
                   <div className="list__main">
                     <div className="list__name">{exercise.name}</div>
                     <div className="list__meta">
-                      {exercise.kind === 'reps' ? 'Repetições' : 'Tempo'}
+                      {KIND_LABELS[exercise.kind]}
                     </div>
                   </div>
                   <span className="chevron">›</span>

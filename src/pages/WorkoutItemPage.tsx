@@ -90,19 +90,34 @@ export function WorkoutItemPage() {
                 <button
                   type="button"
                   className="btn btn--primary"
-                  onClick={() => itemId && void applyPreset(itemId, 'feederWorking')}
+                  onClick={() =>
+                    itemId &&
+                    void applyPreset(
+                      itemId,
+                      exercise.kind === 'cardio' ? 'cardioLadder' : 'feederWorking',
+                    )
+                  }
                 >
-                  Usar modelo Feeder + Working
+                  {exercise.kind === 'cardio'
+                    ? 'Usar escada de 4 trechos'
+                    : 'Usar modelo Feeder + Working'}
                 </button>
                 <button
                   type="button"
                   className="btn"
                   onClick={() =>
                     itemId &&
-                    void applyPreset(itemId, exercise.kind === 'time' ? 'time' : 'simple')
+                    void applyPreset(
+                      itemId,
+                      exercise.kind === 'cardio'
+                        ? 'cardio'
+                        : exercise.kind === 'time'
+                          ? 'time'
+                          : 'simple',
+                    )
                   }
                 >
-                  Usar modelo simples
+                  {exercise.kind === 'cardio' ? 'Usar trecho único' : 'Usar modelo simples'}
                 </button>
                 <button type="button" className="btn btn--ghost" onClick={() => setCreating({})}>
                   Criar bloco do zero
@@ -182,20 +197,32 @@ export function WorkoutItemPage() {
               >
                 Bloco de aquecimento
               </button>
-              <button
-                type="button"
-                className="btn btn--block"
-                onClick={() => setCreating({ kind: 'feeder', sets: 2 })}
-              >
-                Feeder set
-              </button>
-              <button
-                type="button"
-                className="btn btn--block"
-                onClick={() => setCreating({ kind: 'working', sets: 2 })}
-              >
-                Working set
-              </button>
+              {exercise.kind === 'cardio' ? (
+                <button
+                  type="button"
+                  className="btn btn--block"
+                  onClick={() => setCreating({ kind: 'interval', sets: 1 })}
+                >
+                  Trecho
+                </button>
+              ) : (
+                <>
+                  <button
+                    type="button"
+                    className="btn btn--block"
+                    onClick={() => setCreating({ kind: 'feeder', sets: 2 })}
+                  >
+                    Feeder set
+                  </button>
+                  <button
+                    type="button"
+                    className="btn btn--block"
+                    onClick={() => setCreating({ kind: 'working', sets: 2 })}
+                  >
+                    Working set
+                  </button>
+                </>
+              )}
               <button
                 type="button"
                 className="btn btn--block btn--ghost"

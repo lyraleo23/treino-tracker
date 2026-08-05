@@ -148,6 +148,10 @@ export interface ExercisePoint {
   totalReps: number
   maxSeconds: number
   totalSeconds: number
+  totalDistance: number
+  /** Média das velocidades ponderada pelo tempo de cada trecho. */
+  avgSpeed: number
+  maxIncline: number
 }
 
 /**
@@ -174,6 +178,9 @@ export async function getExerciseHistory(exerciseId: string): Promise<ExercisePo
         totalReps: 0,
         maxSeconds: 0,
         totalSeconds: 0,
+        totalDistance: 0,
+        avgSpeed: 0,
+        maxIncline: 0,
       }
       bySession.set(log.sessionId, point)
     }
@@ -185,6 +192,14 @@ export async function getExerciseHistory(exerciseId: string): Promise<ExercisePo
     point.totalReps += log.reps ?? 0
     point.maxSeconds = Math.max(point.maxSeconds, log.seconds ?? 0)
     point.totalSeconds += log.seconds ?? 0
+    point.totalDistance += log.distance ?? 0
+    point.maxIncline = Math.max(point.maxIncline, log.incline ?? 0)
+    // avgSpeed guarda a soma ponderada até o fim do laço.
+    point.avgSpeed += (log.speed ?? 0) * (log.seconds ?? 0)
+  }
+
+  for (const point of bySession.values()) {
+    point.avgSpeed = point.totalSeconds > 0 ? point.avgSpeed / point.totalSeconds : 0
   }
 
   return [...bySession.values()].sort((a, b) => a.date - b.date)

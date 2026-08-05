@@ -1,4 +1,11 @@
-import type { BlockKind, Cycle, SetBlock, Target } from '../db/db'
+import type {
+  BlockKind,
+  CardioField,
+  Cycle,
+  ExerciseKind,
+  SetBlock,
+  Target,
+} from '../db/db'
 
 const dateFormatter = new Intl.DateTimeFormat('pt-BR', {
   day: '2-digit',
@@ -42,6 +49,17 @@ export function formatClock(total: number): string {
   return `${String(minutes).padStart(2, '0')}:${String(seconds % 60).padStart(2, '0')}`
 }
 
+/** "4 min · 6% · 4,2 km/h" — só as partes que a prescrição definiu. */
+export function formatCardioTarget(target: Extract<Target, { kind: 'cardio' }>): string {
+  const parts: string[] = []
+  if (target.seconds) parts.push(formatSeconds(target.seconds))
+  if (target.distance) parts.push(`${formatNumber(target.distance, 2)} km`)
+  if (target.incline) parts.push(`${formatNumber(target.incline)}%`)
+  if (target.resistance) parts.push(`nível ${formatNumber(target.resistance)}`)
+  if (target.speed) parts.push(`${formatNumber(target.speed)} km/h`)
+  return parts.length > 0 ? parts.join(' · ') : 'livre'
+}
+
 export function formatTarget(target: Target): string {
   switch (target.kind) {
     case 'reps':
@@ -50,12 +68,50 @@ export function formatTarget(target: Target): string {
       return `${target.min}–${target.max} reps`
     case 'time':
       return formatSeconds(target.seconds)
+    case 'cardio':
+      return formatCardioTarget(target)
   }
 }
 
-/** "3 × 8–12 reps" */
+/**
+ * "3 × 8–12 reps" — num trecho aeróbico de série única o "1 ×" só polui,
+ * então some.
+ */
 export function formatBlockPlan(block: SetBlock): string {
-  return `${block.sets} × ${formatTarget(block.target)}`
+  const target = formatTarget(block.target)
+  if (block.target.kind === 'cardio' && block.sets === 1) return target
+  return `${block.sets} × ${target}`
+}
+
+/** "4:00 · 6% · 4,2 km/h · 142 bpm" — o que foi executado num trecho. */
+export function formatCardioLog(log: {
+  seconds?: number
+  distance?: number
+  speed?: number
+  incline?: number
+  resistance?: number
+  heartRate?: number
+  calories?: number
+}): string {
+  const parts: string[] = []
+  if (log.seconds) parts.push(formatSeconds(log.seconds))
+  if (log.distance) parts.push(`${formatNumber(log.distance, 2)} km`)
+  if (log.incline) parts.push(`${formatNumber(log.incline)}%`)
+  if (log.resistance) parts.push(`nível ${formatNumber(log.resistance)}`)
+  if (log.speed) parts.push(`${formatNumber(log.speed)} km/h`)
+  if (log.heartRate) parts.push(`${formatNumber(log.heartRate, 0)} bpm`)
+  if (log.calories) parts.push(`${formatNumber(log.calories, 0)} kcal`)
+  return parts.length > 0 ? parts.join(' · ') : '—'
+}
+
+/** 4,2 km/h → "14:17 /km". Zero ou vazio não tem ritmo. */
+export function formatPace(speed: number | undefined): string | undefined {
+  if (!speed || speed <= 0) return undefined
+  const secondsPerKm = 3600 / speed
+  const minutes = Math.floor(secondsPerKm / 60)
+  const seconds = Math.round(secondsPerKm % 60)
+  const carry = seconds === 60
+  return `${carry ? minutes + 1 : minutes}:${String(carry ? 0 : seconds).padStart(2, '0')} /km`
 }
 
 export const BLOCK_LABELS: Record<BlockKind, string> = {
@@ -66,6 +122,23 @@ export const BLOCK_LABELS: Record<BlockKind, string> = {
   backoff: 'Back-off Set',
   drop: 'Drop Set',
   amrap: 'Máximo de reps',
+  interval: 'Trecho',
+}
+
+export const KIND_LABELS: Record<ExerciseKind, string> = {
+  reps: 'Repetições',
+  time: 'Tempo',
+  cardio: 'Aeróbico',
+}
+
+export const CARDIO_LABELS: Record<CardioField, { short: string; unit: string }> = {
+  seconds: { short: 'Tempo', unit: 's' },
+  distance: { short: 'Distância', unit: 'km' },
+  speed: { short: 'Velocidade', unit: 'km/h' },
+  incline: { short: 'Inclinação', unit: '%' },
+  resistance: { short: 'Resistência', unit: 'nível' },
+  heartRate: { short: 'FC', unit: 'bpm' },
+  calories: { short: 'Calorias', unit: 'kcal' },
 }
 
 /**
@@ -149,7 +222,9 @@ export function targetReps(target: Target): number | undefined {
 }
 
 export function targetSeconds(target: Target): number | undefined {
-  return target.kind === 'time' ? target.seconds : undefined
+  if (target.kind === 'time') return target.seconds
+  if (target.kind === 'cardio') return target.seconds
+  return undefined
 }
 
 /** Números com no máximo uma casa, sem zero à toa: 42.5 → "42,5"; 40 → "40". */

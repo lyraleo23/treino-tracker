@@ -7,9 +7,14 @@ sem backend e sem cadastro. Todos os dados ficam no próprio aparelho (IndexedDB
 
 - **Treinos A, B, C...** com exercícios ordenados.
 - **Blocos de séries** dentro de cada exercício — aquecimento, feeder, working, top,
-  back-off, drop e falha. Cada bloco tem o próprio número de séries, alvo
+  back-off, drop, falha e trecho. Cada bloco tem o próprio número de séries, alvo
   (repetições fixas, faixa 8–10 ou tempo) e intervalo entre séries. O modelo
   *Feeder + Working* monta a estrutura de uma vez: 2×5–6 · 2×5–6 · 2×8–10 · 2×8–10.
+- **Exercícios aeróbicos**: esteira, bicicleta, corrida e afins, com prescrição e
+  registro de tempo, distância, velocidade, inclinação, resistência, frequência
+  cardíaca e calorias — cada exercício escolhe quais métricas usa. A velocidade em
+  km/h mostra o ritmo (min/km) ao lado, e o modelo *Escada de trechos* cria os
+  intervalos de uma vez: `4 min · 6% · 4,2 km/h`, cada um com seu cronômetro.
 - **Catálogo global de exercícios**: o exercício existe uma vez só e é referenciado
   pelos treinos. Por isso **o peso usado é lembrado em qualquer treino ou sessão** —
   registrou 40 kg no supino do Treino A, ele aparece pré-preenchido no Treino B.

@@ -9,6 +9,7 @@ import { ConfirmDialog } from '../components/Modal'
 import {
   BLOCK_LABELS,
   formatBlockLabel,
+  formatCardioLog,
   formatDateTime,
   formatNumber,
   formatSeconds,
@@ -107,6 +108,10 @@ export function SessionDetailPage() {
   const saveNotes = () => void updateSessionNotes(session.id, notes)
 
   const describe = (log: SetLog) => {
+    // Trecho aeróbico tem mais de um número: velocidade, inclinação, FC...
+    if (log.distance || log.speed || log.incline || log.resistance || log.heartRate) {
+      return formatCardioLog(log)
+    }
     if (log.seconds !== undefined) {
       return log.weight
         ? `${formatWeight(log.weight)} · ${formatSeconds(log.seconds)}`

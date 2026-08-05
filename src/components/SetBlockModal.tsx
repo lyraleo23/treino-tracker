@@ -1,7 +1,28 @@
 import { useState } from 'react'
-import type { BlockKind, Exercise, SetBlock, Target } from '../db/db'
-import { BLOCK_LABELS } from '../lib/format'
+import {
+  DEFAULT_CARDIO_FIELDS,
+  type BlockKind,
+  type CardioField,
+  type Exercise,
+  type SetBlock,
+  type Target,
+} from '../db/db'
+import { BLOCK_LABELS, CARDIO_LABELS, parseNumber } from '../lib/format'
 import { Modal } from './Modal'
+
+/** FC e calorias são resultado, não prescrição — não entram no alvo do bloco. */
+const CARDIO_TARGET_FIELDS: CardioField[] = [
+  'seconds',
+  'distance',
+  'speed',
+  'incline',
+  'resistance',
+]
+
+/** Número para input com vírgula, como o teclado brasileiro digita. */
+function toInput(value: number): string {
+  return String(value).replace('.', ',')
+}
 
 type TargetMode = 'repsRange' | 'reps' | 'time'
 
@@ -33,6 +54,7 @@ const KIND_ORDER: BlockKind[] = [
   'backoff',
   'drop',
   'amrap',
+  'interval',
 ]
 
 const REST_PRESETS = [30, 60, 90, 120, 180]
@@ -51,14 +73,22 @@ export function SetBlockModal({
 }: Props) {
   const seed = block ?? initial
   const isTimeExercise = exercise.kind === 'time'
+  const isCardio = exercise.kind === 'cardio'
+  const cardioFields = exercise.cardioFields ?? DEFAULT_CARDIO_FIELDS
 
-  const [kind, setKind] = useState<BlockKind>(seed?.kind ?? 'working')
+  const [kind, setKind] = useState<BlockKind>(
+    seed?.kind ?? (isCardio ? 'interval' : 'working'),
+  )
   const [label, setLabel] = useState(seed?.label ?? '')
-  const [sets, setSets] = useState(seed?.sets ?? 2)
+  // Um trecho aeróbico é executado uma vez; repetir é criar outro trecho.
+  const [sets, setSets] = useState(seed?.sets ?? (isCardio ? 1 : 2))
   const [note, setNote] = useState(seed?.note ?? '')
 
+  const seedMode = seed?.target?.kind
   const [mode, setMode] = useState<TargetMode>(
-    isTimeExercise ? 'time' : (seed?.target?.kind ?? 'repsRange'),
+    isTimeExercise || seedMode === 'cardio'
+      ? 'time'
+      : (seedMode ?? 'repsRange'),
   )
   const target = seed?.target
   const [reps, setReps] = useState(target?.kind === 'reps' ? target.value : 10)
@@ -66,10 +96,33 @@ export function SetBlockModal({
   const [max, setMax] = useState(target?.kind === 'repsRange' ? target.max : 10)
   const [seconds, setSeconds] = useState(target?.kind === 'time' ? target.seconds : 60)
 
-  const [rest, setRest] = useState<number | undefined>(seed?.restSeconds ?? 120)
+  // Prescrição aeróbica: cada campo é opcional e vazio significa "livre".
+  const cardio = target?.kind === 'cardio' ? target : undefined
+  const [cardioValues, setCardioValues] = useState<Record<string, string>>({
+    seconds: cardio?.seconds ? String(cardio.seconds / 60) : isCardio ? '4' : '',
+    distance: cardio?.distance ? toInput(cardio.distance) : '',
+    speed: cardio?.speed ? toInput(cardio.speed) : '',
+    incline: cardio?.incline ? toInput(cardio.incline) : '',
+    resistance: cardio?.resistance ? toInput(cardio.resistance) : '',
+  })
+
+  const [rest, setRest] = useState<number | undefined>(
+    seed?.restSeconds ?? (isCardio ? undefined : 120),
+  )
   const [restMax, setRestMax] = useState<number | undefined>(seed?.restSecondsMax)
 
   function buildTarget(): Target {
+    if (isCardio) {
+      const minutes = parseNumber(cardioValues.seconds ?? '')
+      return {
+        kind: 'cardio',
+        seconds: minutes ? Math.round(minutes * 60) : undefined,
+        distance: parseNumber(cardioValues.distance ?? ''),
+        speed: parseNumber(cardioValues.speed ?? ''),
+        incline: parseNumber(cardioValues.incline ?? ''),
+        resistance: parseNumber(cardioValues.resistance ?? ''),
+      }
+    }
     if (isTimeExercise || mode === 'time') {
       return { kind: 'time', seconds: Math.max(1, seconds) }
     }
@@ -168,7 +221,7 @@ export function SetBlockModal({
           </div>
         </div>
 
-        {!isTimeExercise && (
+        {!isTimeExercise && !isCardio && (
           <div className="field">
             <span className="field__label">Alvo</span>
             <div className="segmented">
@@ -197,7 +250,7 @@ export function SetBlockModal({
           </div>
         )}
 
-        {!isTimeExercise && mode === 'repsRange' && (
+        {!isTimeExercise && !isCardio && mode ==='repsRange' && (
           <div className="row">
             <div className="field" style={{ flex: 1 }}>
               <label className="field__label" htmlFor="block-min">
@@ -226,7 +279,7 @@ export function SetBlockModal({
           </div>
         )}
 
-        {!isTimeExercise && mode === 'reps' && (
+        {!isTimeExercise && !isCardio && mode ==='reps' && (
           <div className="field">
             <label className="field__label" htmlFor="block-reps">
               Repetições
@@ -241,7 +294,7 @@ export function SetBlockModal({
           </div>
         )}
 
-        {(isTimeExercise || mode === 'time') && (
+        {!isCardio && (isTimeExercise || mode === 'time') && (
           <div className="field">
             <label className="field__label" htmlFor="block-seconds">
               Tempo por série (segundos)
@@ -253,6 +306,38 @@ export function SetBlockModal({
               value={seconds}
               onChange={(event) => setSeconds(Number(event.target.value) || 0)}
             />
+          </div>
+        )}
+
+        {isCardio && (
+          <div className="field">
+            <span className="field__label">Prescrição do trecho</span>
+            <div className="cardio-grid">
+              {CARDIO_TARGET_FIELDS.filter((f) => cardioFields.includes(f)).map((field) => (
+                <label key={field} className="cardio-field">
+                  <span className="cardio-field__label">
+                    {field === 'seconds' ? 'Tempo (min)' : CARDIO_LABELS[field].short}
+                    {field !== 'seconds' && ` (${CARDIO_LABELS[field].unit})`}
+                  </span>
+                  <input
+                    className="input input--center"
+                    inputMode="decimal"
+                    placeholder="—"
+                    value={cardioValues[field] ?? ''}
+                    onChange={(event) =>
+                      setCardioValues((current) => ({
+                        ...current,
+                        [field]: event.target.value,
+                      }))
+                    }
+                  />
+                </label>
+              ))}
+            </div>
+            <span className="hint">
+              Deixe vazio o que for livre. Só aparecem as métricas marcadas no cadastro
+              do exercício.
+            </span>
           </div>
         )}
 

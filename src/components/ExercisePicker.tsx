@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react'
 import { useLiveQuery } from 'dexie-react-hooks'
 import { db, type Exercise } from '../db/db'
+import { KIND_LABELS } from '../lib/format'
 import { Modal } from './Modal'
 import { ExerciseFormModal } from './ExerciseFormModal'
 
@@ -78,7 +79,7 @@ export function ExercisePicker({ usedIds = [], onPick, onClose }: Props) {
                       <div className="list__name">{exercise.name}</div>
                       <div className="list__meta">
                         {exercise.muscleGroup ?? 'Sem grupo'} ·{' '}
-                        {exercise.kind === 'reps' ? 'Repetições' : 'Tempo'}
+                        {KIND_LABELS[exercise.kind]}
                       </div>
                     </div>
                     {used && <span className="chip chip--accent">no treino</span>}

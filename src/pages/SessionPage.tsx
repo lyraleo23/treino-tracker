@@ -2,7 +2,15 @@ import { useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { useLiveQuery } from 'dexie-react-hooks'
 import Dexie from 'dexie'
-import { db, type Exercise, type SetBlock, type SetLog, type WorkoutItem } from '../db/db'
+import {
+  db,
+  DEFAULT_CARDIO_FIELDS,
+  type CardioField,
+  type Exercise,
+  type SetBlock,
+  type SetLog,
+  type WorkoutItem,
+} from '../db/db'
 import { deleteSetLog, discardSession, finishSession, saveSetLog } from '../db/actions'
 import {
   getLastSetsForBlocks,
@@ -14,12 +22,14 @@ import { PageHeader } from '../components/PageHeader'
 import { EmptyState } from '../components/EmptyState'
 import { ConfirmDialog } from '../components/Modal'
 import { TimerCell } from '../components/TimerCell'
+import { CardioSetRow, type CardioDraft } from '../components/CardioSetRow'
 import { ExercisePhoto } from '../components/ExercisePhoto'
 import { ChartIcon, CheckIcon, NoteIcon, PlusIcon, VideoIcon } from '../components/icons'
 import { openExternal } from '../lib/image'
 import {
   formatBlockLabel,
   formatBlockPlan,
+  formatCardioLog,
   formatRest,
   formatSeconds,
   formatWeight,
@@ -28,7 +38,7 @@ import {
   targetSeconds,
 } from '../lib/format'
 
-type Draft = { weight?: string; reps?: string; seconds?: string; note?: string }
+type Draft = Partial<Record<CardioField | 'weight' | 'reps' | 'note', string>>
 type Drafts = Record<string, Draft>
 
 interface Row {
@@ -164,6 +174,10 @@ export function SessionPage() {
       .sort((a, b) => a.setIndex - b.setIndex)
 
     if (blockLogs.length === 0) return 'nada registrado'
+
+    if (block.target.kind === 'cardio') {
+      return blockLogs.map((log) => formatCardioLog(log)).join(' · ')
+    }
 
     if (block.target.kind === 'time') {
       return blockLogs.map((log) => formatSeconds(log.seconds ?? 0)).join(', ')
@@ -347,6 +361,8 @@ export function SessionPage() {
 
                 {expanded && blocks.map((block) => {
                   const isTimeRow = block.target.kind === 'time'
+                  const isCardioRow = block.target.kind === 'cardio'
+                  const cardioFields = exercise.cardioFields ?? DEFAULT_CARDIO_FIELDS
                   const last = lastByBlock.get(block.id)
                   const fallback = lastByExercise.get(item.exerciseId)
                   const rest = formatRest(block)
@@ -400,15 +416,98 @@ export function SessionPage() {
                           : 'Primeira vez registrando este bloco.'}
                       </div>
 
-                      <div className={isTimeRow ? 'set-heads set-heads--time' : 'set-heads'}>
-                        <span />
-                        <span>Peso (kg)</span>
-                        <span>{isTimeRow ? 'Tempo (s)' : 'Reps'}</span>
-                        <span />
-                        <span />
-                      </div>
+                      {!isCardioRow && (
+                        <div className={isTimeRow ? 'set-heads set-heads--time' : 'set-heads'}>
+                          <span />
+                          <span>Peso (kg)</span>
+                          <span>{isTimeRow ? 'Tempo (s)' : 'Reps'}</span>
+                          <span />
+                          <span />
+                        </div>
+                      )}
 
-                      {Array.from({ length: setCountOf(block) }, (_, setIndex) => {
+                      {isCardioRow &&
+                        Array.from({ length: setCountOf(block) }, (_, setIndex) => {
+                          const key = rowKey(block.id, setIndex)
+                          const log = blockLogs.find((entry) => entry.setIndex === setIndex)
+                          const draft = drafts[key] ?? {}
+                          const prescribed =
+                            block.target.kind === 'cardio' ? block.target : undefined
+
+                          const fromTarget = (field: CardioField) => {
+                            switch (field) {
+                              case 'seconds':
+                                return prescribed?.seconds
+                              case 'distance':
+                                return prescribed?.distance
+                              case 'speed':
+                                return prescribed?.speed
+                              case 'incline':
+                                return prescribed?.incline
+                              case 'resistance':
+                                return prescribed?.resistance
+                              default:
+                                return undefined
+                            }
+                          }
+
+                          // Vale o que foi digitado, depois o registrado, depois o
+                          // prescrito e por fim o que se fez da última vez.
+                          const values: CardioDraft = {}
+                          for (const field of cardioFields) {
+                            values[field] =
+                              draft[field] ??
+                              (log
+                                ? toInput(log[field])
+                                : toInput(fromTarget(field) ?? last?.[field]))
+                          }
+
+                          const noteValue = draft.note ?? log?.note ?? ''
+                          const persistCardio = (existing: SetLog | undefined) =>
+                            saveSetLog({
+                              id: existing?.id,
+                              sessionId: session.id,
+                              exerciseId: item.exerciseId,
+                              workoutItemId: item.id,
+                              blockId: block.id,
+                              setIndex,
+                              seconds: parseNumber(values.seconds ?? ''),
+                              distance: parseNumber(values.distance ?? ''),
+                              speed: parseNumber(values.speed ?? ''),
+                              incline: parseNumber(values.incline ?? ''),
+                              resistance: parseNumber(values.resistance ?? ''),
+                              heartRate: parseNumber(values.heartRate ?? ''),
+                              calories: parseNumber(values.calories ?? ''),
+                              note: noteValue,
+                            })
+
+                          return (
+                            <CardioSetRow
+                              key={key}
+                              setIndex={setIndex}
+                              block={block}
+                              fields={cardioFields}
+                              values={values}
+                              done={!!log}
+                              noteValue={noteValue}
+                              noteOpen={openNotes[key] || noteValue.length > 0}
+                              onChange={(field, value) => patchDraft(key, { [field]: value })}
+                              onFieldBlur={() => log && void persistCardio(log)}
+                              onToggleDone={() => {
+                                if (log) void deleteSetLog(log.id)
+                                else void persistCardio(undefined)
+                              }}
+                              onToggleNote={() =>
+                                setOpenNotes((current) => ({ ...current, [key]: !current[key] }))
+                              }
+                              onNoteChange={(value) => patchDraft(key, { note: value })}
+                              onNoteBlur={() => log && void persistCardio(log)}
+                            />
+                          )
+                        })}
+
+                      {!isCardioRow &&
+                        Array.from({ length: setCountOf(block) }, (_, setIndex) => {
                         const key = rowKey(block.id, setIndex)
                         const log = blockLogs.find((entry) => entry.setIndex === setIndex)
                         const draft = drafts[key] ?? {}

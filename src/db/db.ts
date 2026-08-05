@@ -1,8 +1,27 @@
 import Dexie, { type Table } from 'dexie'
 import { newId } from '../lib/id'
 
-/** Exercício de repetições (peso × reps) ou de tempo (duração). */
-export type ExerciseKind = 'reps' | 'time'
+/**
+ * Repetições (peso × reps), tempo (duração) ou aeróbico (esteira, bicicleta,
+ * corrida — com velocidade, inclinação e afins).
+ */
+export type ExerciseKind = 'reps' | 'time' | 'cardio'
+
+/**
+ * Métricas que um exercício aeróbico usa. São sete no total, mas nenhum
+ * aparelho usa todas: a esteira não tem resistência, a bicicleta não tem
+ * inclinação. Cada exercício declara as suas para a tela ficar enxuta.
+ */
+export type CardioField =
+  | 'seconds'
+  | 'distance'
+  | 'speed'
+  | 'incline'
+  | 'resistance'
+  | 'heartRate'
+  | 'calories'
+
+export const DEFAULT_CARDIO_FIELDS: CardioField[] = ['seconds', 'speed', 'incline']
 
 /** Flag booleana persistida como 0/1 porque o IndexedDB não indexa boolean. */
 export type Flag = 0 | 1
@@ -23,6 +42,8 @@ export interface Exercise {
   photoUpdatedAt?: number
   /** Link para vídeo de execução, aberto fora do app. */
   videoUrl?: string
+  /** Só para kind 'cardio'; ausente usa DEFAULT_CARDIO_FIELDS. */
+  cardioFields?: CardioField[]
   archived: Flag
   createdAt: number
 }
@@ -48,6 +69,15 @@ export type Target =
   | { kind: 'reps'; value: number }
   | { kind: 'repsRange'; min: number; max: number }
   | { kind: 'time'; seconds: number }
+  /** Prescrição de um trecho aeróbico: "4 min a 6% e 4,2 km/h". */
+  | {
+      kind: 'cardio'
+      seconds?: number
+      distance?: number
+      speed?: number
+      incline?: number
+      resistance?: number
+    }
 
 /** Um exercício dentro de um treino. A prescrição fica nos blocos. */
 export interface WorkoutItem {
@@ -70,6 +100,8 @@ export type BlockKind =
   | 'backoff'
   | 'drop'
   | 'amrap'
+  /** Trecho de um set aeróbico: cada um com sua velocidade e inclinação. */
+  | 'interval'
 
 /**
  * Um grupo de séries com a mesma prescrição dentro de um exercício:
@@ -115,6 +147,13 @@ export interface SetLog {
   weight?: number
   reps?: number
   seconds?: number
+  // Executado num trecho aeróbico; velocidade sempre em km/h, o ritmo é derivado.
+  distance?: number
+  speed?: number
+  incline?: number
+  resistance?: number
+  heartRate?: number
+  calories?: number
   note?: string
   completedAt: number
 }

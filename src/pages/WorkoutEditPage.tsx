@@ -225,31 +225,58 @@ export function WorkoutEditPage() {
             Como montar os blocos de séries deste exercício?
           </p>
           <div className="stack">
-            <button
-              type="button"
-              className="btn btn--block btn--primary"
-              onClick={() => void handleAdd(pendingExercise, 'feederWorking')}
-            >
-              Feeder + Working
-              <span className="hint" style={{ marginLeft: 6 }}>
-                2×5–6, 2×5–6, 2×8–10, 2×8–10
-              </span>
-            </button>
-            <button
-              type="button"
-              className="btn btn--block"
-              onClick={() =>
-                void handleAdd(
-                  pendingExercise,
-                  pendingExercise.kind === 'time' ? 'time' : 'simple',
-                )
-              }
-            >
-              Simples
-              <span className="hint" style={{ marginLeft: 6 }}>
-                {pendingExercise.kind === 'time' ? '3 × 60s' : '3 × 8–12'}
-              </span>
-            </button>
+            {pendingExercise.kind === 'cardio' ? (
+              <>
+                <button
+                  type="button"
+                  className="btn btn--block btn--primary"
+                  onClick={() => void handleAdd(pendingExercise, 'cardioLadder')}
+                >
+                  Escada de trechos
+                  <span className="hint" style={{ marginLeft: 6 }}>
+                    4 trechos de 4 min
+                  </span>
+                </button>
+                <button
+                  type="button"
+                  className="btn btn--block"
+                  onClick={() => void handleAdd(pendingExercise, 'cardio')}
+                >
+                  Trecho único
+                  <span className="hint" style={{ marginLeft: 6 }}>
+                    20 min contínuos
+                  </span>
+                </button>
+              </>
+            ) : (
+              <>
+                <button
+                  type="button"
+                  className="btn btn--block btn--primary"
+                  onClick={() => void handleAdd(pendingExercise, 'feederWorking')}
+                >
+                  Feeder + Working
+                  <span className="hint" style={{ marginLeft: 6 }}>
+                    2×5–6, 2×5–6, 2×8–10, 2×8–10
+                  </span>
+                </button>
+                <button
+                  type="button"
+                  className="btn btn--block"
+                  onClick={() =>
+                    void handleAdd(
+                      pendingExercise,
+                      pendingExercise.kind === 'time' ? 'time' : 'simple',
+                    )
+                  }
+                >
+                  Simples
+                  <span className="hint" style={{ marginLeft: 6 }}>
+                    {pendingExercise.kind === 'time' ? '3 × 60s' : '3 × 8–12'}
+                  </span>
+                </button>
+              </>
+            )}
             <button
               type="button"
               className="btn btn--block"

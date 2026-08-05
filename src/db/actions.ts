@@ -1,6 +1,7 @@
 import Dexie from 'dexie'
 import {
   db,
+  type CardioField,
   type Cycle,
   type Exercise,
   type ExerciseKind,
@@ -21,6 +22,7 @@ export async function createExercise(data: {
   notes?: string
   videoUrl?: string
   photo?: Blob
+  cardioFields?: CardioField[]
 }): Promise<string> {
   const exercise: Exercise = {
     id: newId(),
@@ -29,6 +31,7 @@ export async function createExercise(data: {
     muscleGroup: data.muscleGroup?.trim() || undefined,
     notes: data.notes?.trim() || undefined,
     videoUrl: data.videoUrl?.trim() || undefined,
+    cardioFields: data.cardioFields,
     photo: data.photo,
     photoUpdatedAt: data.photo ? Date.now() : undefined,
     archived: 0,
@@ -43,7 +46,14 @@ export async function updateExercise(
   data: Partial<
     Pick<
       Exercise,
-      'name' | 'kind' | 'muscleGroup' | 'notes' | 'archived' | 'photo' | 'videoUrl'
+      | 'name'
+      | 'kind'
+      | 'muscleGroup'
+      | 'notes'
+      | 'archived'
+      | 'photo'
+      | 'videoUrl'
+      | 'cardioFields'
     >
   >,
 ): Promise<void> {
@@ -206,7 +216,7 @@ export async function moveWorkoutItem(id: string, direction: -1 | 1): Promise<vo
 
 // --- Blocos de séries ---------------------------------------------------
 
-export type BlockPreset = 'feederWorking' | 'simple' | 'time'
+export type BlockPreset = 'feederWorking' | 'simple' | 'time' | 'cardio' | 'cardioLadder'
 
 type BlockDraft = Omit<SetBlock, 'id' | 'workoutItemId' | 'order'>
 
@@ -242,6 +252,13 @@ const PRESETS: Record<BlockPreset, BlockDraft[]> = {
     },
   ],
   time: [{ kind: 'working', sets: 3, target: { kind: 'time', seconds: 60 }, restSeconds: 60 }],
+  cardio: [{ kind: 'interval', sets: 1, target: { kind: 'cardio', seconds: 20 * 60 } }],
+  // Quatro trechos de 4 min, prontos para receber inclinação e velocidade.
+  cardioLadder: Array.from({ length: 4 }, () => ({
+    kind: 'interval' as const,
+    sets: 1,
+    target: { kind: 'cardio' as const, seconds: 4 * 60 },
+  })),
 }
 
 /** Bloco de aquecimento sugerido ao adicionar um do tipo warmup. */
@@ -406,15 +423,29 @@ export async function saveSetLog(data: {
   weight?: number
   reps?: number
   seconds?: number
+  distance?: number
+  speed?: number
+  incline?: number
+  resistance?: number
+  heartRate?: number
+  calories?: number
   note?: string
 }): Promise<string> {
+  const measures = {
+    weight: data.weight,
+    reps: data.reps,
+    seconds: data.seconds,
+    distance: data.distance,
+    speed: data.speed,
+    incline: data.incline,
+    resistance: data.resistance,
+    heartRate: data.heartRate,
+    calories: data.calories,
+    note: data.note?.trim() || undefined,
+  }
+
   if (data.id) {
-    await db.setLogs.update(data.id, {
-      weight: data.weight,
-      reps: data.reps,
-      seconds: data.seconds,
-      note: data.note?.trim() || undefined,
-    })
+    await db.setLogs.update(data.id, measures)
     return data.id
   }
 
@@ -425,10 +456,7 @@ export async function saveSetLog(data: {
     workoutItemId: data.workoutItemId,
     blockId: data.blockId,
     setIndex: data.setIndex,
-    weight: data.weight,
-    reps: data.reps,
-    seconds: data.seconds,
-    note: data.note?.trim() || undefined,
+    ...measures,
     completedAt: Date.now(),
   }
   await db.setLogs.add(log)

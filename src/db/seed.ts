@@ -1,4 +1,4 @@
-import { db, type Exercise, type ExerciseKind } from './db'
+import { db, type CardioField, type Exercise, type ExerciseKind } from './db'
 import { newId } from '../lib/id'
 
 type SeedExercise = [name: string, kind: ExerciseKind, muscleGroup: string]
@@ -20,12 +20,30 @@ const SEED: SeedExercise[] = [
   ['Leg press', 'reps', 'Pernas'],
   ['Cadeira extensora', 'reps', 'Pernas'],
   ['Mesa flexora', 'reps', 'Pernas'],
+  ['Cadeira abdutora', 'reps', 'Pernas'],
+  ['Cadeira adutora', 'reps', 'Pernas'],
   ['Panturrilha em pé', 'reps', 'Pernas'],
   ['Abdominal supra', 'reps', 'Core'],
   ['Prancha', 'time', 'Core'],
-  ['Esteira', 'time', 'Cardio'],
-  ['Bicicleta ergométrica', 'time', 'Cardio'],
+  ['Esteira', 'cardio', 'Cardio'],
+  ['Caminhada', 'cardio', 'Cardio'],
+  ['Corrida', 'cardio', 'Cardio'],
+  ['Bicicleta ergométrica', 'cardio', 'Cardio'],
+  ['Elíptico', 'cardio', 'Cardio'],
+  ['Escada', 'cardio', 'Cardio'],
+  ['Remo ergômetro', 'cardio', 'Cardio'],
 ]
+
+/** Métricas de cada aeróbico do seed — a esteira não tem resistência etc. */
+const CARDIO_FIELDS_BY_NAME: Record<string, CardioField[]> = {
+  Esteira: ['seconds', 'speed', 'incline'],
+  Caminhada: ['seconds', 'distance', 'speed'],
+  Corrida: ['seconds', 'distance', 'speed', 'heartRate'],
+  'Bicicleta ergométrica': ['seconds', 'distance', 'resistance'],
+  Elíptico: ['seconds', 'distance', 'resistance'],
+  Escada: ['seconds', 'resistance', 'heartRate'],
+  'Remo ergômetro': ['seconds', 'distance', 'resistance'],
+}
 
 /**
  * Popula o catálogo na primeira execução. Se o usuário apagar tudo, o seed
@@ -41,6 +59,7 @@ export async function seedIfEmpty(): Promise<void> {
     name,
     kind,
     muscleGroup,
+    cardioFields: kind === 'cardio' ? CARDIO_FIELDS_BY_NAME[name] : undefined,
     archived: 0,
     createdAt: now + i,
   }))

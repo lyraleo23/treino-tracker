@@ -1,9 +1,31 @@
 import { useRef, useState } from 'react'
-import type { Exercise, ExerciseKind } from '../db/db'
+import {
+  DEFAULT_CARDIO_FIELDS,
+  type CardioField,
+  type Exercise,
+  type ExerciseKind,
+} from '../db/db'
 import { createExercise, setExercisePhoto, updateExercise } from '../db/actions'
 import { useObjectUrl } from '../hooks/useObjectUrl'
+import { CARDIO_LABELS } from '../lib/format'
 import { isSafeUrl, resizeImage } from '../lib/image'
 import { Modal } from './Modal'
+
+const CARDIO_ORDER: CardioField[] = [
+  'seconds',
+  'distance',
+  'speed',
+  'incline',
+  'resistance',
+  'heartRate',
+  'calories',
+]
+
+const KIND_HINTS: Record<ExerciseKind, string> = {
+  reps: 'Registra peso e número de repetições.',
+  time: 'Registra a duração executada (e peso, se houver).',
+  cardio: 'Registra tempo, velocidade, inclinação e o que mais você marcar abaixo.',
+}
 
 interface Props {
   /** Exercício em edição; ausente cria um novo. */
@@ -20,6 +42,9 @@ export function ExerciseFormModal({ exercise, initialName, onClose, onSaved }: P
   const [muscleGroup, setMuscleGroup] = useState(exercise?.muscleGroup ?? '')
   const [notes, setNotes] = useState(exercise?.notes ?? '')
   const [videoUrl, setVideoUrl] = useState(exercise?.videoUrl ?? '')
+  const [fields, setFields] = useState<CardioField[]>(
+    exercise?.cardioFields ?? DEFAULT_CARDIO_FIELDS,
+  )
   const [photo, setPhoto] = useState<Blob | undefined>(exercise?.photo)
   const [photoError, setPhotoError] = useState<string | null>(null)
   const photoInput = useRef<HTMLInputElement>(null)
@@ -40,6 +65,9 @@ export function ExerciseFormModal({ exercise, initialName, onClose, onSaved }: P
   async function handleSave() {
     if (!canSave) return
 
+    // Guardar as métricas num exercício que não é aeróbico só deixa lixo.
+    const cardioFields = kind === 'cardio' ? fields : undefined
+
     if (exercise) {
       await updateExercise(exercise.id, {
         name: name.trim(),
@@ -47,12 +75,21 @@ export function ExerciseFormModal({ exercise, initialName, onClose, onSaved }: P
         muscleGroup: muscleGroup.trim() || undefined,
         notes: notes.trim() || undefined,
         videoUrl: videoUrl.trim() || undefined,
+        cardioFields,
       })
       // A foto tem carimbo próprio, então vai por uma ação separada.
       if (photo !== exercise.photo) await setExercisePhoto(exercise.id, photo)
       onSaved?.(exercise.id)
     } else {
-      const id = await createExercise({ name, kind, muscleGroup, notes, videoUrl, photo })
+      const id = await createExercise({
+        name,
+        kind,
+        muscleGroup,
+        notes,
+        videoUrl,
+        photo,
+        cardioFields,
+      })
       onSaved?.(id)
     }
     onClose()
@@ -110,13 +147,49 @@ export function ExerciseFormModal({ exercise, initialName, onClose, onSaved }: P
             >
               Tempo
             </button>
+            <button
+              type="button"
+              aria-pressed={kind === 'cardio'}
+              onClick={() => setKind('cardio')}
+            >
+              Aeróbico
+            </button>
           </div>
-          <span className="hint">
-            {kind === 'reps'
-              ? 'Registra peso e número de repetições.'
-              : 'Registra a duração executada (e peso, se houver).'}
-          </span>
+          <span className="hint">{KIND_HINTS[kind]}</span>
         </div>
+
+        {kind === 'cardio' && (
+          <div className="field">
+            <span className="field__label">Métricas deste aparelho</span>
+            <div className="chip-grid">
+              {CARDIO_ORDER.map((option) => {
+                const active = fields.includes(option)
+                return (
+                  <button
+                    key={option}
+                    type="button"
+                    className={active ? 'chip-option is-active' : 'chip-option'}
+                    aria-pressed={active}
+                    onClick={() =>
+                      setFields((current) =>
+                        active
+                          ? current.filter((f) => f !== option)
+                          : // Mantém a ordem canônica, não a de clique.
+                            CARDIO_ORDER.filter((f) => f === option || current.includes(f)),
+                      )
+                    }
+                  >
+                    {CARDIO_LABELS[option].short}
+                  </button>
+                )
+              })}
+            </div>
+            <span className="hint">
+              Só as marcadas aparecem na hora de registrar. Esteira costuma usar tempo,
+              velocidade e inclinação; bicicleta, tempo, distância e resistência.
+            </span>
+          </div>
+        )}
 
         <div className="field">
           <label className="field__label" htmlFor="exercise-group">

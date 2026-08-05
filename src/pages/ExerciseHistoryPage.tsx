@@ -11,7 +11,7 @@ import {
   YAxis,
   type TooltipProps,
 } from 'recharts'
-import { db } from '../db/db'
+import { db, type ExerciseKind } from '../db/db'
 import { deleteExercise } from '../db/actions'
 import { getExerciseHistory, type ExercisePoint } from '../db/queries'
 import { PageHeader } from '../components/PageHeader'
@@ -21,7 +21,13 @@ import { ExerciseFormModal } from '../components/ExerciseFormModal'
 import { ExercisePhoto } from '../components/ExercisePhoto'
 import { VideoIcon } from '../components/icons'
 import { openExternal } from '../lib/image'
-import { formatDate, formatDateTime, formatNumber, formatSeconds } from '../lib/format'
+import {
+  KIND_LABELS,
+  formatDate,
+  formatDateTime,
+  formatNumber,
+  formatSeconds,
+} from '../lib/format'
 
 // Cores literais: presentation attributes de SVG não resolvem var() no Chrome,
 // então os tokens do CSS são espelhados aqui.
@@ -56,6 +62,34 @@ const WEIGHT_METRICS: Metric[] = [
     label: 'Repetições',
     value: (p) => p.totalReps,
     format: (v) => `${formatNumber(v, 0)} reps`,
+  },
+]
+
+/** Cabeçalhos das duas últimas colunas da tabela, por tipo de exercício. */
+const TABLE_HEADS: Record<ExerciseKind, [string, string]> = {
+  reps: ['Peso máx', 'Volume'],
+  time: ['Melhor', 'Total'],
+  cardio: ['Tempo', 'Distância'],
+}
+
+const CARDIO_METRICS: Metric[] = [
+  {
+    key: 'distance',
+    label: 'Distância',
+    value: (p) => p.totalDistance,
+    format: (v) => `${formatNumber(v, 2)} km`,
+  },
+  {
+    key: 'totalSeconds',
+    label: 'Tempo total',
+    value: (p) => p.totalSeconds,
+    format: formatSeconds,
+  },
+  {
+    key: 'avgSpeed',
+    label: 'Velocidade média',
+    value: (p) => p.avgSpeed,
+    format: (v) => `${formatNumber(v)} km/h`,
   },
 ]
 
@@ -121,8 +155,21 @@ export function ExerciseHistoryPage() {
     [exerciseId],
   )
 
-  const metrics = exercise?.kind === 'time' ? TIME_METRICS : WEIGHT_METRICS
-  const metric = metrics.find((m) => m.key === metricKey) ?? metrics[0]!
+  const metrics =
+    exercise?.kind === 'cardio'
+      ? CARDIO_METRICS
+      : exercise?.kind === 'time'
+        ? TIME_METRICS
+        : WEIGHT_METRICS
+
+  // Sem escolha explícita, começa pela primeira métrica que tem dado: numa
+  // esteira sem distância, mostrar "0 km" não diz nada.
+  const withData = metrics.find((option) =>
+    (history ?? []).some((point) => option.value(point) > 0),
+  )
+  const metric = metrics.find((m) => m.key === metricKey) ?? withData ?? metrics[0]!
+
+  const hasDistance = (history ?? []).some((point) => point.totalDistance > 0)
 
   const chartData = useMemo(
     () =>
@@ -157,7 +204,7 @@ export function ExerciseHistoryPage() {
     <>
       <PageHeader
         title={exercise.name}
-        subtitle={[exercise.muscleGroup, exercise.kind === 'reps' ? 'Repetições' : 'Tempo']
+        subtitle={[exercise.muscleGroup, KIND_LABELS[exercise.kind]]
           .filter(Boolean)
           .join(' · ')}
         back
@@ -280,9 +327,13 @@ export function ExerciseHistoryPage() {
                 <thead>
                   <tr>
                     <th>Data</th>
-                    <th>Séries</th>
-                    <th>{exercise.kind === 'time' ? 'Melhor' : 'Peso máx'}</th>
-                    <th>{exercise.kind === 'time' ? 'Total' : 'Volume'}</th>
+                    <th>{exercise.kind === 'cardio' ? 'Trechos' : 'Séries'}</th>
+                    <th>{TABLE_HEADS[exercise.kind][0]}</th>
+                    <th>
+                      {exercise.kind === 'cardio' && !hasDistance
+                        ? 'Vel. média'
+                        : TABLE_HEADS[exercise.kind][1]}
+                    </th>
                   </tr>
                 </thead>
                 <tbody>
@@ -294,14 +345,20 @@ export function ExerciseHistoryPage() {
                         <td>{formatDate(point.date)}</td>
                         <td>{point.sets}</td>
                         <td>
-                          {exercise.kind === 'time'
-                            ? formatSeconds(point.maxSeconds)
-                            : `${formatNumber(point.maxWeight)} kg`}
+                          {exercise.kind === 'cardio'
+                            ? formatSeconds(point.totalSeconds)
+                            : exercise.kind === 'time'
+                              ? formatSeconds(point.maxSeconds)
+                              : `${formatNumber(point.maxWeight)} kg`}
                         </td>
                         <td>
-                          {exercise.kind === 'time'
-                            ? formatSeconds(point.totalSeconds)
-                            : `${formatNumber(point.totalVolume, 0)} kg`}
+                          {exercise.kind === 'cardio'
+                            ? point.totalDistance > 0
+                              ? `${formatNumber(point.totalDistance, 2)} km`
+                              : `${formatNumber(point.avgSpeed)} km/h`
+                            : exercise.kind === 'time'
+                              ? formatSeconds(point.totalSeconds)
+                              : `${formatNumber(point.totalVolume, 0)} kg`}
                         </td>
                       </tr>
                     ))}

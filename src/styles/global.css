@@ -399,6 +399,58 @@ h3 {
   --block-color: var(--warn);
 }
 
+.block--interval {
+  --block-color: #22d3ee;
+}
+
+/* --- Campos de aeróbico ---------------------------------------------- */
+
+.cardio-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 8px;
+}
+
+.cardio-field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+
+.cardio-field__label {
+  color: var(--text-dim);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.cardio-row {
+  padding: 10px 0;
+  border-top: 1px solid var(--border);
+}
+
+.cardio-row__head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 6px;
+}
+
+.cardio-row__pace {
+  color: var(--text-faint);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+
+.cardio-row.is-done .set-row__index {
+  color: var(--accent);
+}
+
+.cardio-row.is-done .input {
+  border-color: color-mix(in srgb, var(--accent) 45%, var(--border));
+  background: var(--accent-soft);
+}
+
 .block__title {
   font-size: 13px;
   font-weight: 700;
