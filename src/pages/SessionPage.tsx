@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState, type RefObject } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { useLiveQuery } from 'dexie-react-hooks'
 import Dexie from 'dexie'
@@ -55,6 +55,47 @@ function toInput(value: number | undefined): string {
   return String(value).replace('.', ',')
 }
 
+interface CurrentTarget {
+  blockId: string
+  itemId: string
+}
+
+/**
+ * Leva a tela até o que precisa ser feito agora. Sem isso, o bloco concluído
+ * encolhe, o conteúdo salta para cima e o próximo fica fora da vista.
+ */
+function useScrollToCurrent(
+  current: CurrentTarget | undefined,
+  footerRef: RefObject<HTMLDivElement | null>,
+  blockRefs: RefObject<Record<string, HTMLDivElement | null>>,
+  sectionRefs: RefObject<Record<string, HTMLElement | null>>,
+) {
+  const previous = useRef<CurrentTarget | null | undefined>(undefined)
+
+  useEffect(() => {
+    const before = previous.current
+    // `undefined` é o estado antes da sessão carregar; ainda não há o que rolar.
+    if (before === undefined && current === undefined) return
+    if (before?.blockId === current?.blockId) return
+
+    const first = before === undefined
+    previous.current = current ?? null
+
+    // Trocou de exercício: mostrar o cartão inteiro, para o nome do exercício
+    // aparecer junto das séries. Terminou tudo: mostrar o botão de finalizar.
+    const target = !current
+      ? footerRef.current
+      : before && before.itemId !== current.itemId
+        ? (sectionRefs.current?.[current.itemId] ?? blockRefs.current?.[current.blockId])
+        : blockRefs.current?.[current.blockId]
+
+    target?.scrollIntoView({
+      behavior: first ? 'auto' : 'smooth',
+      block: current ? 'start' : 'end',
+    })
+  }, [current, footerRef, blockRefs, sectionRefs])
+}
+
 export function SessionPage() {
   const { sessionId } = useParams<{ sessionId: string }>()
   const navigate = useNavigate()
@@ -68,6 +109,11 @@ export function SessionPage() {
   // progresso, o que faz o bloco concluído fechar e o próximo abrir sozinho.
   const [openBlocks, setOpenBlocks] = useState<Record<string, boolean>>({})
   const [openExercises, setOpenExercises] = useState<Record<string, boolean>>({})
+
+  // Alvos da rolagem automática.
+  const blockRefs = useRef<Record<string, HTMLDivElement | null>>({})
+  const sectionRefs = useRef<Record<string, HTMLElement | null>>({})
+  const footerRef = useRef<HTMLDivElement>(null)
 
   const data = useLiveQuery(async () => {
     if (!sessionId) return null
@@ -123,6 +169,42 @@ export function SessionPage() {
     setDrafts((current) => ({ ...current, [key]: { ...current[key], ...patch } }))
   }
 
+  /**
+   * Quantas séries o bloco mostra: o planejado, mais o que já foi registrado
+   * além disso, mais as séries extras pedidas na mão.
+   */
+  const setCountOf = useCallback(
+    (block: SetBlock) => {
+      const blockLogs = (data?.logs ?? []).filter((log) => log.blockId === block.id)
+      const maxIndex = blockLogs.reduce((max, log) => Math.max(max, log.setIndex), -1)
+      return Math.max(block.sets, maxIndex + 1) + (extraSets[block.id] ?? 0)
+    },
+    [data, extraSets],
+  )
+
+  const isBlockDone = useCallback(
+    (block: SetBlock) =>
+      (data?.logs ?? []).filter((log) => log.blockId === block.id).length >=
+      setCountOf(block),
+    [data, setCountOf],
+  )
+
+  /**
+   * O primeiro bloco ainda incompleto do treino — é o que fica aberto e o que a
+   * tela persegue. Precisa ser memoizado aqui em cima porque o efeito de
+   * rolagem é um hook, e hooks não podem vir depois dos returns de carregamento.
+   */
+  const current = useMemo(() => {
+    for (const row of data?.rows ?? []) {
+      for (const block of row.blocks) {
+        if (!isBlockDone(block)) return { blockId: block.id, itemId: row.item.id }
+      }
+    }
+    return undefined
+  }, [data, isBlockDone])
+
+  useScrollToCurrent(current, footerRef, blockRefs, sectionRefs)
+
   if (data === null) {
     return (
       <>
@@ -138,28 +220,15 @@ export function SessionPage() {
 
   const { session, rows, logs, lastByBlock, lastByExercise, suggestions } = data
 
-  const setCountOf = (block: SetBlock) => {
-    const blockLogs = logs.filter((log) => log.blockId === block.id)
-    const maxIndex = blockLogs.reduce((max, log) => Math.max(max, log.setIndex), -1)
-    return Math.max(block.sets, maxIndex + 1) + (extraSets[block.id] ?? 0)
-  }
-
   const totalPlanned = rows.reduce(
     (sum, row) => sum + row.blocks.reduce((acc, block) => acc + setCountOf(block), 0),
     0,
   )
 
-  const isBlockDone = (block: SetBlock) =>
-    logs.filter((log) => log.blockId === block.id).length >= setCountOf(block)
-
   const isExerciseDone = (row: Row) =>
     row.blocks.length > 0 && row.blocks.every(isBlockDone)
 
-  // O primeiro bloco ainda incompleto do treino é o que fica aberto por padrão:
-  // ao concluir um bloco, ele sai daqui e o seguinte assume — sem estado extra.
-  const currentBlockId = rows
-    .flatMap((row) => row.blocks)
-    .find((block) => !isBlockDone(block))?.id
+  const currentBlockId = current?.blockId
 
   const isBlockOpen = (block: SetBlock) =>
     openBlocks[block.id] ?? block.id === currentBlockId
@@ -265,7 +334,13 @@ export function SessionPage() {
             const expanded = isExerciseOpen(row)
 
             return (
-              <section key={item.id} className="card">
+              <section
+                key={item.id}
+                className="card"
+                ref={(node) => {
+                  sectionRefs.current[item.id] = node
+                }}
+              >
                 <div className="row row--between">
                   <button
                     type="button"
@@ -376,7 +451,13 @@ export function SessionPage() {
                   const blockOpen = isBlockOpen(block)
 
                   return (
-                    <div key={block.id} className={`block block--${block.kind}`}>
+                    <div
+                      key={block.id}
+                      className={`block block--${block.kind}`}
+                      ref={(node) => {
+                        blockRefs.current[block.id] = node
+                      }}
+                    >
                       <button
                         type="button"
                         className="collapse-head"
@@ -662,7 +743,7 @@ export function SessionPage() {
         </div>
 
         {rows.length > 0 && (
-          <div className="stack" style={{ marginTop: 22 }}>
+          <div className="stack" style={{ marginTop: 22 }} ref={footerRef}>
             <button
               type="button"
               className="btn btn--block btn--primary"

@@ -371,6 +371,13 @@ h3 {
   border-left: 3px solid var(--block-color, var(--border));
 }
 
+/* A rolagem automática precisa parar abaixo do cabeçalho fixo, senão o alvo
+   fica escondido atrás dele. */
+.block,
+.page section.card {
+  scroll-margin-top: calc(76px + env(safe-area-inset-top));
+}
+
 .block--warmup {
   --block-color: #64748b;
 }
