@@ -5,6 +5,7 @@ import Dexie from 'dexie'
 import {
   db,
   DEFAULT_CARDIO_FIELDS,
+  DEFAULT_WEIGHT_STEP,
   type CardioField,
   type Exercise,
   type SetBlock,
@@ -13,17 +14,19 @@ import {
 } from '../db/db'
 import { deleteSetLog, discardSession, finishSession, saveSetLog } from '../db/actions'
 import {
-  getLastSetsForBlocks,
+  getHistoryForBlocks,
   getLastSetsForExercises,
   getProgressionSuggestion,
   type ProgressionSuggestion,
 } from '../db/queries'
+import { buildLadder, roundToStep, type LadderEntry } from '../lib/ladder'
 import { PageHeader } from '../components/PageHeader'
 import { EmptyState } from '../components/EmptyState'
 import { ConfirmDialog } from '../components/Modal'
 import { TimerCell } from '../components/TimerCell'
 import { CardioSetRow, type CardioDraft } from '../components/CardioSetRow'
 import { ExercisePhoto } from '../components/ExercisePhoto'
+import { SuggestionBanner } from '../components/SuggestionBanner'
 import { ChartIcon, CheckIcon, NoteIcon, PlusIcon, VideoIcon } from '../components/icons'
 import { openExternal } from '../lib/image'
 import {
@@ -143,7 +146,7 @@ export function SessionPage() {
     const logs = await db.setLogs.where('sessionId').equals(sessionId).toArray()
     const allBlocks = rows.flatMap((row) => row.blocks)
 
-    const lastByBlock = await getLastSetsForBlocks(
+    const lastByBlock = await getHistoryForBlocks(
       allBlocks.map((block) => block.id),
       sessionId,
     )
@@ -266,23 +269,27 @@ export function SessionPage() {
     navigate('/')
   }
 
+  /** Passo de carga do exercício; ausente vale o padrão de 2,5 kg. */
+  const stepOf = (row: Row) => row.exercise.weightStep ?? DEFAULT_WEIGHT_STEP
+
   /**
-   * Sobe a carga de todos os blocos do exercício — feeders inclusive — cada um
-   * a partir do próprio peso anterior, para o feeder seguir mais leve que o
-   * working em vez de igualar a carga.
+   * A escada proposta para o exercício: move a âncora (working set) e recalcula
+   * feeders e aquecimento em cima dela. `delta` de 0 apenas endireita a escada.
    */
-  function applyProgression(row: Row, increment: number) {
+  function proposalFor(row: Row, suggestion: ProgressionSuggestion, delta: number) {
+    const step = stepOf(row)
+    const anchor = roundToStep(suggestion.anchor + delta, step)
+    return buildLadder(row.blocks, suggestion.previous, anchor, step)
+  }
+
+  /** Escreve a escada nos campos da sessão. Nada vai para o banco aqui. */
+  function applyLadder(row: Row, entries: LadderEntry[]) {
     setDrafts((current) => {
       const next = { ...current }
-      for (const block of row.blocks) {
-        const base =
-          lastByBlock.get(block.id)?.weight ??
-          lastByExercise.get(row.item.exerciseId)?.weight
-        if (base === undefined) continue
-
-        const value = toInput(base + increment)
-        for (let index = 0; index < setCountOf(block); index += 1) {
-          const key = rowKey(block.id, index)
+      for (const entry of entries) {
+        const value = toInput(entry.to)
+        for (let index = 0; index < setCountOf(entry.block); index += 1) {
+          const key = rowKey(entry.block.id, index)
           next[key] = { ...next[key], weight: value }
         }
       }
@@ -391,40 +398,19 @@ export function SessionPage() {
                 )}
 
                 {expanded && suggestion && !dismissed[item.exerciseId] && (
-                  <div className="banner" style={{ marginTop: 10, flexWrap: 'wrap' }}>
-                    <div className="banner__text">
-                      <strong>Hora de subir a carga</strong>
-                      {suggestion.reason}
-                    </div>
-                    <div className="row" style={{ gap: 6, width: '100%' }}>
-                      <button
-                        type="button"
-                        className="btn btn--sm btn--primary"
-                        onClick={() => applyProgression(row, 2.5)}
-                      >
-                        +2,5 kg
-                      </button>
-                      <button
-                        type="button"
-                        className="btn btn--sm btn--primary"
-                        onClick={() => applyProgression(row, 5)}
-                      >
-                        +5 kg
-                      </button>
-                      <button
-                        type="button"
-                        className="btn btn--sm btn--ghost"
-                        onClick={() =>
-                          setDismissed((current) => ({
-                            ...current,
-                            [item.exerciseId]: true,
-                          }))
-                        }
-                      >
-                        Agora não
-                      </button>
-                    </div>
-                  </div>
+                  <SuggestionBanner
+                    suggestion={suggestion}
+                    step={stepOf(row)}
+                    preview={(delta) => proposalFor(row, suggestion, delta)}
+                    blocks={blocks}
+                    onApply={(entries) => applyLadder(row, entries)}
+                    onDismiss={() =>
+                      setDismissed((current) => ({
+                        ...current,
+                        [item.exerciseId]: true,
+                      }))
+                    }
+                  />
                 )}
 
                 {expanded && blocks.length === 0 && (
@@ -438,13 +424,14 @@ export function SessionPage() {
                   const isTimeRow = block.target.kind === 'time'
                   const isCardioRow = block.target.kind === 'cardio'
                   const cardioFields = exercise.cardioFields ?? DEFAULT_CARDIO_FIELDS
-                  const last = lastByBlock.get(block.id)
+                  const history = lastByBlock.get(block.id)
+                  const last = history?.heaviest
                   const fallback = lastByExercise.get(item.exerciseId)
                   const rest = formatRest(block)
                   const blockLogs = logs.filter((log) => log.blockId === block.id)
 
-                  // Peso sugerido: o da série anterior deste bloco, senão o último
-                  // registrado no bloco, senão o último do exercício.
+                  // Só entra em cena onde não há histórico daquela posição: aí
+                  // o peso digitado numa série desce para as seguintes.
                   let carryWeight = toInput((last ?? fallback)?.weight)
 
                   const blockDone = isBlockDone(block)
@@ -533,14 +520,15 @@ export function SessionPage() {
                           }
 
                           // Vale o que foi digitado, depois o registrado, depois o
-                          // prescrito e por fim o que se fez da última vez.
+                          // prescrito e por fim o mesmo trecho da última vez.
+                          const before = history?.bySetIndex.get(setIndex)
                           const values: CardioDraft = {}
                           for (const field of cardioFields) {
                             values[field] =
                               draft[field] ??
                               (log
                                 ? toInput(log[field])
-                                : toInput(fromTarget(field) ?? last?.[field]))
+                                : toInput(fromTarget(field) ?? before?.[field]))
                           }
 
                           const noteValue = draft.note ?? log?.note ?? ''
@@ -593,13 +581,20 @@ export function SessionPage() {
                         const log = blockLogs.find((entry) => entry.setIndex === setIndex)
                         const draft = drafts[key] ?? {}
 
+                        // A mesma posição na última sessão manda: a 2ª série
+                        // volta com o peso da 2ª série, não com o da última.
+                        const before = history?.bySetIndex.get(setIndex)
+
                         const weightValue =
-                          draft.weight ?? (log ? toInput(log.weight) : carryWeight)
+                          draft.weight ??
+                          (log
+                            ? toInput(log.weight)
+                            : (toInput(before?.weight) || carryWeight))
                         const repsValue =
                           draft.reps ??
                           (log
                             ? toInput(log.reps)
-                            : toInput(last?.reps ?? targetReps(block.target)))
+                            : toInput(before?.reps ?? last?.reps ?? targetReps(block.target)))
                         const secondsValue =
                           draft.seconds ??
                           (log ? toInput(log.seconds) : toInput(targetSeconds(block.target)))

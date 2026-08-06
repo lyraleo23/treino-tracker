@@ -34,6 +34,14 @@ const SEED: SeedExercise[] = [
   ['Remo ergômetro', 'cardio', 'Cardio'],
 ]
 
+/** Onde o incremento não é os 2,5 kg padrão. */
+const WEIGHT_STEP_BY_NAME: Record<string, number> = {
+  'Elevação lateral': 1,
+  'Rosca martelo': 1,
+  'Leg press': 5,
+  'Agachamento livre': 5,
+}
+
 /** Métricas de cada aeróbico do seed — a esteira não tem resistência etc. */
 const CARDIO_FIELDS_BY_NAME: Record<string, CardioField[]> = {
   Esteira: ['seconds', 'speed', 'incline'],
@@ -60,6 +68,7 @@ export async function seedIfEmpty(): Promise<void> {
     kind,
     muscleGroup,
     cardioFields: kind === 'cardio' ? CARDIO_FIELDS_BY_NAME[name] : undefined,
+    weightStep: kind === 'cardio' ? undefined : WEIGHT_STEP_BY_NAME[name],
     archived: 0,
     createdAt: now + i,
   }))

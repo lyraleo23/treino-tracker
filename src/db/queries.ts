@@ -1,5 +1,6 @@
 import Dexie from 'dexie'
 import { db, type SetBlock, type SetLog, type Target } from './db'
+import { anchorWeight, isAnchorBlock, ladderIsBroken } from '../lib/ladder'
 
 /**
  * Última série registrada para o exercício, considerando todo o histórico —
@@ -50,20 +51,58 @@ export async function getLastSetForBlock(
   return range.filter((log) => log.sessionId !== excludeSessionId).first()
 }
 
-/** Mapa blockId → última série, para pré-preencher a sessão de uma vez. */
-export async function getLastSetsForBlocks(
+/**
+ * As séries da **última sessão** em que o bloco foi executado, indexadas por
+ * posição. É o que permite a 2ª série voltar com o peso da 2ª série, e não com
+ * o da última registrada.
+ */
+export interface BlockHistory {
+  sessionId: string
+  bySetIndex: Map<number, SetLog>
+  /** A série mais pesada da sessão, usada como referência do bloco. */
+  heaviest: SetLog
+}
+
+export async function getBlockHistory(
+  blockId: string,
+  excludeSessionId?: string,
+): Promise<BlockHistory | undefined> {
+  const logs = await db.setLogs
+    .where('[blockId+completedAt]')
+    .between([blockId, Dexie.minKey], [blockId, Dexie.maxKey])
+    .reverse()
+    .toArray()
+
+  const relevant = excludeSessionId
+    ? logs.filter((log) => log.sessionId !== excludeSessionId)
+    : logs
+
+  const mostRecent = relevant[0]
+  if (!mostRecent) return undefined
+
+  const fromSession = relevant.filter((log) => log.sessionId === mostRecent.sessionId)
+  const bySetIndex = new Map(fromSession.map((log) => [log.setIndex, log]))
+  const heaviest = fromSession.reduce((max, log) =>
+    (log.weight ?? 0) > (max.weight ?? 0) ? log : max,
+  )
+
+  return { sessionId: mostRecent.sessionId, bySetIndex, heaviest }
+}
+
+/** Mapa blockId → histórico da última sessão, para montar a tela de uma vez. */
+export async function getHistoryForBlocks(
   blockIds: string[],
   excludeSessionId?: string,
-): Promise<Map<string, SetLog>> {
+): Promise<Map<string, BlockHistory>> {
   const entries = await Promise.all(
     blockIds.map(
-      async (id) => [id, await getLastSetForBlock(id, excludeSessionId)] as const,
+      async (id) => [id, await getBlockHistory(id, excludeSessionId)] as const,
     ),
   )
 
-  const map = new Map<string, SetLog>()
-  for (const [id, log] of entries) {
-    if (log) map.set(id, log)
+  const map = new Map<string, BlockHistory>()
+  for (const [id, history] of entries) {
+    if (history) map.set(id, history)
   }
   return map
 }
@@ -75,27 +114,39 @@ function topReps(target: Target): number | undefined {
   return undefined
 }
 
+/** Piso da faixa; num alvo fixo o piso é o próprio número. */
+function minReps(target: Target): number | undefined {
+  if (target.kind === 'reps') return target.value
+  if (target.kind === 'repsRange') return target.min
+  return undefined
+}
+
+export type SuggestionKind = 'subir' | 'descer' | 'escada'
+
 export interface ProgressionSuggestion {
   exerciseId: string
   sessionId: string
+  kind: SuggestionKind
+  title: string
   reason: string
+  /** Carga de working da última sessão, ponto de partida da escada. */
+  anchor: number
+  /** blockId → carga usada na última sessão. */
+  previous: Map<string, number | undefined>
 }
 
 /**
- * Aplica a regra de progressão: se na última sessão finalizada todas as séries
- * de todos os blocos de working (e top set) bateram o topo da faixa, é hora de
- * subir a carga. Aquecimento e feeder não entram no critério — a faixa deles
- * não mede evolução.
+ * Lê a última sessão finalizada do exercício e decide se cabe sugerir algo.
+ * Só working e top set entram no critério de subir/descer — a faixa baixa dos
+ * feeders é preparação, não medida de evolução.
  */
 export async function getProgressionSuggestion(
   exerciseId: string,
   blocks: SetBlock[],
   excludeSessionId: string,
 ): Promise<ProgressionSuggestion | null> {
-  const workingBlocks = blocks.filter(
-    (block) => block.kind === 'working' || block.kind === 'top',
-  )
-  if (workingBlocks.length === 0) return null
+  const anchorBlocks = blocks.filter((block) => isAnchorBlock(block.kind))
+  if (anchorBlocks.length === 0) return null
 
   const logs = await db.setLogs
     .where('[exerciseId+completedAt]')
@@ -111,31 +162,73 @@ export async function getProgressionSuggestion(
   if (!session?.finishedAt) return null
 
   const sessionLogs = logs.filter((log) => log.sessionId === session.id)
-  const reached: number[] = []
-  let hasWeight = false
 
-  for (const block of workingBlocks) {
+  // Carga de referência de cada bloco naquela sessão: a série mais pesada.
+  const previous = new Map<string, number | undefined>()
+  for (const block of blocks) {
+    const weights = sessionLogs
+      .filter((log) => log.blockId === block.id)
+      .map((log) => log.weight ?? 0)
+      .filter((weight) => weight > 0)
+    previous.set(block.id, weights.length > 0 ? Math.max(...weights) : undefined)
+  }
+
+  const anchor = anchorWeight(blocks, previous)
+  if (anchor === undefined) return null
+
+  const alcancado: number[] = []
+  let todosNoTopo = true
+  let abaixoDoMinimo = false
+
+  for (const block of anchorBlocks) {
     const top = topReps(block.target)
-    if (top === undefined) return null
+    const floor = minReps(block.target)
+    if (top === undefined || floor === undefined) return null
 
     const blockLogs = sessionLogs.filter((log) => log.blockId === block.id)
-    // Menos séries do que o previsto significa treino incompleto, não progressão.
-    if (blockLogs.length < block.sets) return null
+    // Treino incompleto não é progressão nem reprovação de carga.
+    if (blockLogs.length < block.sets) todosNoTopo = false
 
     for (const log of blockLogs) {
-      if ((log.reps ?? 0) < top) return null
-      if ((log.weight ?? 0) > 0) hasWeight = true
-      reached.push(log.reps ?? 0)
+      const reps = log.reps ?? 0
+      alcancado.push(reps)
+      if (reps < top) todosNoTopo = false
+      if (reps < floor) abaixoDoMinimo = true
     }
   }
 
-  if (!hasWeight) return null
+  const base = { exerciseId, sessionId: session.id, anchor, previous }
 
-  return {
-    exerciseId,
-    sessionId: session.id,
-    reason: `Na última sessão você fechou o topo da faixa em todas as séries de working (${reached.join(', ')} reps).`,
+  // Abaixo do mínimo pesa mais: carga excessiva é problema imediato.
+  if (abaixoDoMinimo) {
+    return {
+      ...base,
+      kind: 'descer',
+      title: 'Sugerimos reduzir as cargas',
+      reason: `Na última sessão alguma série de working ficou abaixo do mínimo da faixa (${alcancado.join(', ')} reps).`,
+    }
   }
+
+  if (todosNoTopo) {
+    return {
+      ...base,
+      kind: 'subir',
+      title: 'Sugerimos aumentar as cargas',
+      reason: `Você fechou o topo da faixa em todas as séries de working (${alcancado.join(', ')} reps).`,
+    }
+  }
+
+  if (ladderIsBroken(blocks, previous)) {
+    return {
+      ...base,
+      kind: 'escada',
+      title: 'Sugerimos ajustar as cargas',
+      reason:
+        'Na última sessão os feeders não subiram em direção ao working set. A escada de carga rende mais preparando o movimento aos poucos.',
+    }
+  }
+
+  return null
 }
 
 /** Agregado de um exercício dentro de uma sessão — uma linha do gráfico. */

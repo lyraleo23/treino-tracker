@@ -23,6 +23,9 @@ export type CardioField =
 
 export const DEFAULT_CARDIO_FIELDS: CardioField[] = ['seconds', 'speed', 'incline']
 
+/** Incremento de carga padrão, em kg. */
+export const DEFAULT_WEIGHT_STEP = 2.5
+
 /** Flag booleana persistida como 0/1 porque o IndexedDB não indexa boolean. */
 export type Flag = 0 | 1
 
@@ -44,6 +47,11 @@ export interface Exercise {
   videoUrl?: string
   /** Só para kind 'cardio'; ausente usa DEFAULT_CARDIO_FIELDS. */
   cardioFields?: CardioField[]
+  /**
+   * De quanto em quanto a carga sobe neste aparelho: 2,5 kg na barra, 1 kg num
+   * haltere pequeno, 5 kg no leg press. Ausente usa DEFAULT_WEIGHT_STEP.
+   */
+  weightStep?: number
   archived: Flag
   createdAt: number
 }

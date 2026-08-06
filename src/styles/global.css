@@ -847,6 +847,54 @@ h3 {
   font-size: 15px;
 }
 
+.banner--descer {
+  background: rgba(251, 191, 36, 0.13);
+  border-color: color-mix(in srgb, var(--warn) 35%, transparent);
+}
+
+.banner--escada {
+  background: rgba(56, 189, 248, 0.12);
+  border-color: rgba(56, 189, 248, 0.35);
+}
+
+/* Antes → depois de cada bloco, para nada ser aplicado às cegas. */
+.proposal {
+  list-style: none;
+  margin: 8px 0 2px;
+  padding: 0;
+  width: 100%;
+  font-size: 14px;
+  font-variant-numeric: tabular-nums;
+}
+
+.proposal li {
+  display: grid;
+  grid-template-columns: 1fr auto auto auto;
+  align-items: baseline;
+  gap: 8px;
+  padding: 3px 0;
+}
+
+.proposal__name {
+  color: var(--text-dim);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.proposal__from {
+  color: var(--text-faint);
+  text-decoration: line-through;
+}
+
+.proposal__arrow {
+  color: var(--text-faint);
+}
+
+.proposal__to {
+  font-weight: 700;
+}
+
 /* --- Listas ---------------------------------------------------------- */
 
 .list {

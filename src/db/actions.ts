@@ -23,6 +23,7 @@ export async function createExercise(data: {
   videoUrl?: string
   photo?: Blob
   cardioFields?: CardioField[]
+  weightStep?: number
 }): Promise<string> {
   const exercise: Exercise = {
     id: newId(),
@@ -32,6 +33,7 @@ export async function createExercise(data: {
     notes: data.notes?.trim() || undefined,
     videoUrl: data.videoUrl?.trim() || undefined,
     cardioFields: data.cardioFields,
+    weightStep: data.weightStep,
     photo: data.photo,
     photoUpdatedAt: data.photo ? Date.now() : undefined,
     archived: 0,
@@ -54,6 +56,7 @@ export async function updateExercise(
       | 'photo'
       | 'videoUrl'
       | 'cardioFields'
+      | 'weightStep'
     >
   >,
 ): Promise<void> {

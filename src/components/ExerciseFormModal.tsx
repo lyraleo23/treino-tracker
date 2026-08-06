@@ -1,13 +1,16 @@
 import { useRef, useState } from 'react'
 import {
   DEFAULT_CARDIO_FIELDS,
+  DEFAULT_WEIGHT_STEP,
   type CardioField,
   type Exercise,
   type ExerciseKind,
 } from '../db/db'
 import { createExercise, setExercisePhoto, updateExercise } from '../db/actions'
 import { useObjectUrl } from '../hooks/useObjectUrl'
-import { CARDIO_LABELS } from '../lib/format'
+import { CARDIO_LABELS, formatNumber } from '../lib/format'
+
+const WEIGHT_STEPS = [1, 2.5, 5, 10]
 import { isSafeUrl, resizeImage } from '../lib/image'
 import { Modal } from './Modal'
 
@@ -45,6 +48,7 @@ export function ExerciseFormModal({ exercise, initialName, onClose, onSaved }: P
   const [fields, setFields] = useState<CardioField[]>(
     exercise?.cardioFields ?? DEFAULT_CARDIO_FIELDS,
   )
+  const [weightStep, setWeightStep] = useState(exercise?.weightStep ?? DEFAULT_WEIGHT_STEP)
   const [photo, setPhoto] = useState<Blob | undefined>(exercise?.photo)
   const [photoError, setPhotoError] = useState<string | null>(null)
   const photoInput = useRef<HTMLInputElement>(null)
@@ -65,8 +69,10 @@ export function ExerciseFormModal({ exercise, initialName, onClose, onSaved }: P
   async function handleSave() {
     if (!canSave) return
 
-    // Guardar as métricas num exercício que não é aeróbico só deixa lixo.
+    // Guardar as métricas num exercício que não é aeróbico só deixa lixo, e o
+    // mesmo vale para o incremento de carga num aeróbico.
     const cardioFields = kind === 'cardio' ? fields : undefined
+    const step = kind === 'cardio' ? undefined : weightStep
 
     if (exercise) {
       await updateExercise(exercise.id, {
@@ -76,6 +82,7 @@ export function ExerciseFormModal({ exercise, initialName, onClose, onSaved }: P
         notes: notes.trim() || undefined,
         videoUrl: videoUrl.trim() || undefined,
         cardioFields,
+        weightStep: step,
       })
       // A foto tem carimbo próprio, então vai por uma ação separada.
       if (photo !== exercise.photo) await setExercisePhoto(exercise.id, photo)
@@ -89,6 +96,7 @@ export function ExerciseFormModal({ exercise, initialName, onClose, onSaved }: P
         videoUrl,
         photo,
         cardioFields,
+        weightStep: step,
       })
       onSaved?.(id)
     }
@@ -157,6 +165,30 @@ export function ExerciseFormModal({ exercise, initialName, onClose, onSaved }: P
           </div>
           <span className="hint">{KIND_HINTS[kind]}</span>
         </div>
+
+        {kind !== 'cardio' && (
+          <div className="field">
+            <span className="field__label">Incremento de carga</span>
+            <div className="chip-grid">
+              {WEIGHT_STEPS.map((option) => (
+                <button
+                  key={option}
+                  type="button"
+                  className={option === weightStep ? 'chip-option is-active' : 'chip-option'}
+                  aria-pressed={option === weightStep}
+                  onClick={() => setWeightStep(option)}
+                >
+                  {formatNumber(option)} kg
+                </button>
+              ))}
+            </div>
+            <span className="hint">
+              De quanto em quanto a carga sobe neste aparelho. É o que as sugestões de
+              ajuste usam para arredondar — halteres pequenos costumam ir de 1 em 1,
+              barra de 2,5 em 2,5, leg press de 5 em 5.
+            </span>
+          </div>
+        )}
 
         {kind === 'cardio' && (
           <div className="field">
