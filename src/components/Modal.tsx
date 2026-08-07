@@ -47,6 +47,8 @@ interface ConfirmProps {
   title: string
   message: string
   confirmLabel?: string
+  /** Onde "Cancelar" não descreve bem a saída ("Continuar treinando"). */
+  cancelLabel?: string
   danger?: boolean
   onConfirm: () => void
   onCancel: () => void
@@ -56,6 +58,7 @@ export function ConfirmDialog({
   title,
   message,
   confirmLabel = 'Confirmar',
+  cancelLabel = 'Cancelar',
   danger,
   onConfirm,
   onCancel,
@@ -67,7 +70,7 @@ export function ConfirmDialog({
       actions={
         <>
           <button type="button" className="btn btn--ghost" onClick={onCancel}>
-            Cancelar
+            {cancelLabel}
           </button>
           <button
             type="button"

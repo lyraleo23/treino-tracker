@@ -877,6 +877,31 @@ h3 {
   gap: 8px;
 }
 
+/* As três opções de carga dividem a linha em partes iguais. */
+.delta-picker {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 6px;
+}
+
+.delta-picker .chip-option {
+  padding-left: 4px;
+  padding-right: 4px;
+  text-align: center;
+}
+
+/* O motivo é apoio: o olho pega primeiro o título e a tabela de cargas. */
+.banner--stacked .banner__text {
+  font-size: 13px;
+  color: var(--text-dim);
+}
+
+.banner--stacked .banner__text strong {
+  font-size: 15px;
+  color: var(--text);
+  margin-bottom: 2px;
+}
+
 .banner--descer {
   background: rgba(251, 191, 36, 0.13);
   border-color: color-mix(in srgb, var(--warn) 35%, transparent);

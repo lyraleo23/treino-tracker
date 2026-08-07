@@ -25,7 +25,7 @@ import {
   getProgressionSuggestion,
   type ProgressionSuggestion,
 } from '../db/queries'
-import { buildLadder, roundToStep, type LadderEntry } from '../lib/ladder'
+import { buildLadder, type LadderEntry } from '../lib/ladder'
 import { PageHeader } from '../components/PageHeader'
 import { EmptyState } from '../components/EmptyState'
 import { ConfirmDialog } from '../components/Modal'
@@ -74,11 +74,24 @@ interface CurrentTarget {
  * Leva a tela até o que precisa ser feito agora. Sem isso, o bloco concluído
  * encolhe, o conteúdo salta para cima e o próximo fica fora da vista.
  */
+/** Altura do cabeçalho fixo; abaixo dela começa a área realmente visível. */
+const HEADER_OFFSET = 76
+
+/** Já está à vista por inteiro na área útil? Então não há o que rolar. */
+function isComfortablyVisible(element: Element): boolean {
+  const box = element.getBoundingClientRect()
+  const top = HEADER_OFFSET
+  const bottom = window.innerHeight
+
+  // Alvo mais alto que a tela: basta o topo estar na área útil.
+  if (box.height > bottom - top) return box.top >= top && box.top < bottom - 80
+  return box.top >= top && box.bottom <= bottom
+}
+
 function useScrollToCurrent(
   current: CurrentTarget | undefined,
   footerRef: RefObject<HTMLDivElement | null>,
   blockRefs: RefObject<Record<string, HTMLDivElement | null>>,
-  sectionRefs: RefObject<Record<string, HTMLElement | null>>,
 ) {
   const previous = useRef<CurrentTarget | null | undefined>(undefined)
 
@@ -91,19 +104,19 @@ function useScrollToCurrent(
     const first = before === undefined
     previous.current = current ?? null
 
-    // Trocou de exercício: mostrar o cartão inteiro, para o nome do exercício
-    // aparecer junto das séries. Terminou tudo: mostrar o botão de finalizar.
-    const target = !current
-      ? footerRef.current
-      : before && before.itemId !== current.itemId
-        ? (sectionRefs.current?.[current.itemId] ?? blockRefs.current?.[current.blockId])
-        : blockRefs.current?.[current.blockId]
+    // Sempre o bloco, nunca o cartão do exercício: mirar o cartão põe o título
+    // no topo e empurra os sets — o trabalho de verdade — para fora da tela.
+    const target = current ? blockRefs.current?.[current.blockId] : footerRef.current
+    if (!target) return
 
-    target?.scrollIntoView({
+    // Rolar um alvo que já está à vista só embaralha a leitura.
+    if (isComfortablyVisible(target)) return
+
+    target.scrollIntoView({
       behavior: first ? 'auto' : 'smooth',
       block: current ? 'start' : 'end',
     })
-  }, [current, footerRef, blockRefs, sectionRefs])
+  }, [current, footerRef, blockRefs])
 }
 
 export function SessionPage() {
@@ -115,6 +128,7 @@ export function SessionPage() {
   const [openNotes, setOpenNotes] = useState<Record<string, boolean>>({})
   const [dismissed, setDismissed] = useState<Record<string, boolean>>({})
   const [confirmDiscard, setConfirmDiscard] = useState(false)
+  const [confirmFinish, setConfirmFinish] = useState(false)
   // Só guardam o que o usuário abriu/fechou na mão; o resto é derivado do
   // progresso, o que faz o bloco concluído fechar e o próximo abrir sozinho.
   const [openBlocks, setOpenBlocks] = useState<Record<string, boolean>>({})
@@ -127,7 +141,6 @@ export function SessionPage() {
 
   // Alvos da rolagem automática.
   const blockRefs = useRef<Record<string, HTMLDivElement | null>>({})
-  const sectionRefs = useRef<Record<string, HTMLElement | null>>({})
   const footerRef = useRef<HTMLDivElement>(null)
 
   const data = useLiveQuery(async () => {
@@ -218,7 +231,7 @@ export function SessionPage() {
     return undefined
   }, [data, isBlockDone])
 
-  useScrollToCurrent(current, footerRef, blockRefs, sectionRefs)
+  useScrollToCurrent(current, footerRef, blockRefs)
 
   if (data === null) {
     return (
@@ -289,8 +302,11 @@ export function SessionPage() {
    * feeders e aquecimento em cima dela. `delta` de 0 apenas endireita a escada.
    */
   function proposalFor(row: Row, suggestion: ProgressionSuggestion, delta: number) {
-    const step = stepOf(row)
-    const anchor = roundToStep(suggestion.anchor + delta, step)
+    // O incremento escolhido é também a unidade de arredondamento: escolher +1
+    // e receber feeders em múltiplos de 2,5 seria incoerente. Delta 0 (ajuste de
+    // escada) cai no passo do exercício.
+    const step = Math.abs(delta) || stepOf(row)
+    const anchor = suggestion.anchor + delta
     return buildLadder(row.blocks, suggestion.previous, anchor, step)
   }
 
@@ -316,6 +332,23 @@ export function SessionPage() {
     navigate(result === 'finished' ? `/historico/${sessionId}` : '/', { replace: true })
   }
 
+  /** Exercícios com séries faltando, para o aviso dizer o que ficou pendente. */
+  const pending = rows
+    .map((row) => {
+      const planned = row.blocks.reduce((sum, block) => sum + setCountOf(block), 0)
+      const done = row.blocks.reduce(
+        (sum, block) => sum + logs.filter((log) => log.blockId === block.id).length,
+        0,
+      )
+      return { name: row.exercise.name, planned, done }
+    })
+    .filter((row) => row.done < row.planned)
+
+  function requestFinish() {
+    if (pending.length === 0) void handleFinish()
+    else setConfirmFinish(true)
+  }
+
   return (
     <>
       <PageHeader
@@ -328,7 +361,7 @@ export function SessionPage() {
           <button
             type="button"
             className="btn btn--sm btn--primary"
-            onClick={() => void handleFinish()}
+            onClick={requestFinish}
           >
             Finalizar
           </button>
@@ -356,9 +389,6 @@ export function SessionPage() {
               <section
                 key={item.id}
                 className="card"
-                ref={(node) => {
-                  sectionRefs.current[item.id] = node
-                }}
               >
                 <div className="row row--between">
                   <button
@@ -764,7 +794,7 @@ export function SessionPage() {
             <button
               type="button"
               className="btn btn--block btn--primary"
-              onClick={() => void handleFinish()}
+              onClick={requestFinish}
             >
               Finalizar treino
             </button>
@@ -778,6 +808,22 @@ export function SessionPage() {
           </div>
         )}
       </div>
+
+      {confirmFinish && (
+        <ConfirmDialog
+          title="Finalizar incompleto?"
+          message={`Faltam ${totalPlanned - logs.length} de ${totalPlanned} séries: ${pending
+            .map((row) => `${row.name} (${row.done}/${row.planned})`)
+            .join(', ')}.`}
+          confirmLabel="Finalizar mesmo assim"
+          cancelLabel="Continuar treinando"
+          onCancel={() => setConfirmFinish(false)}
+          onConfirm={() => {
+            setConfirmFinish(false)
+            void handleFinish()
+          }}
+        />
+      )}
 
       {editingBlock && (
         // Muda o plano do bloco, não o que já foi registrado. Sem remover:

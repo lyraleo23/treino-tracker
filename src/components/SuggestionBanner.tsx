@@ -4,6 +4,9 @@ import type { ProgressionSuggestion } from '../db/queries'
 import type { LadderEntry } from '../lib/ladder'
 import { formatBlockLabel, formatNumber } from '../lib/format'
 
+/** Os saltos de carga oferecidos, em kg. */
+const INCREMENTS = [1, 2.5, 5]
+
 interface Props {
   suggestion: ProgressionSuggestion
   /** Incremento de carga do exercício, em kg. */
@@ -27,15 +30,17 @@ export function SuggestionBanner({
   onApply,
   onDismiss,
 }: Props) {
-  // Os deslocamentos possíveis: um passo e dois passos, no sentido da sugestão.
+  // Sempre as mesmas três opções, no sentido da sugestão. O passo do exercício
+  // escolhe qual vem marcada, e o incremento escolhido vira o arredondamento.
   const deltas =
     suggestion.kind === 'subir'
-      ? [step, step * 2]
+      ? INCREMENTS
       : suggestion.kind === 'descer'
-        ? [-step, -step * 2]
+        ? INCREMENTS.map((value) => -value)
         : [0]
 
-  const [selected, setSelected] = useState(deltas[0]!)
+  const preferred = deltas.find((delta) => Math.abs(delta) === step) ?? deltas[0]!
+  const [selected, setSelected] = useState(preferred)
   const entries = preview(selected).filter((entry) => entry.from !== entry.to)
 
   const label = (delta: number) =>
@@ -71,7 +76,7 @@ export function SuggestionBanner({
       {/* Escolher o tamanho do passo e aplicar são gestos diferentes: os chips
           só trocam a prévia acima; quem grava nos campos é o Aplicar. */}
       {deltas.length > 1 && (
-        <div className="chip-grid">
+        <div className="delta-picker">
           {deltas.map((delta) => (
             <button
               key={delta}
