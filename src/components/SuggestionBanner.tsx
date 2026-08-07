@@ -44,7 +44,10 @@ export function SuggestionBanner({
       : `${delta > 0 ? '+' : '−'}${formatNumber(Math.abs(delta))} kg`
 
   return (
-    <div className={`banner banner--${suggestion.kind}`} style={{ marginTop: 10 }}>
+    <div
+      className={`banner banner--stacked banner--${suggestion.kind}`}
+      style={{ marginTop: 10 }}
+    >
       <div className="banner__text">
         <strong>{suggestion.title}</strong>
         {suggestion.reason}
@@ -68,7 +71,7 @@ export function SuggestionBanner({
       {/* Escolher o tamanho do passo e aplicar são gestos diferentes: os chips
           só trocam a prévia acima; quem grava nos campos é o Aplicar. */}
       {deltas.length > 1 && (
-        <div className="chip-grid" style={{ width: '100%' }}>
+        <div className="chip-grid">
           {deltas.map((delta) => (
             <button
               key={delta}
@@ -83,7 +86,7 @@ export function SuggestionBanner({
         </div>
       )}
 
-      <div className="row" style={{ gap: 6, width: '100%' }}>
+      <div className="row" style={{ gap: 6 }}>
         <button
           type="button"
           className="btn btn--sm btn--primary"

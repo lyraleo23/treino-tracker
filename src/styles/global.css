@@ -868,6 +868,15 @@ h3 {
   font-size: 15px;
 }
 
+/* O .banner nasceu como linha (texto + botão) e serve assim na home. Uma tarja
+   com texto, proposta e botões precisa empilhar, senão os três disputam a mesma
+   linha e o texto quebra palavra por palavra. */
+.banner--stacked {
+  flex-direction: column;
+  align-items: stretch;
+  gap: 8px;
+}
+
 .banner--descer {
   background: rgba(251, 191, 36, 0.13);
   border-color: color-mix(in srgb, var(--warn) 35%, transparent);
@@ -881,9 +890,8 @@ h3 {
 /* Antes → depois de cada bloco, para nada ser aplicado às cegas. */
 .proposal {
   list-style: none;
-  margin: 8px 0 2px;
+  margin: 0;
   padding: 0;
-  width: 100%;
   font-size: 14px;
   font-variant-numeric: tabular-nums;
 }
