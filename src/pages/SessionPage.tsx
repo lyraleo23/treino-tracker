@@ -12,7 +12,13 @@ import {
   type SetLog,
   type WorkoutItem,
 } from '../db/db'
-import { deleteSetLog, discardSession, finishSession, saveSetLog } from '../db/actions'
+import {
+  deleteSetLog,
+  discardSession,
+  finishSession,
+  saveSetLog,
+  updateSetBlock,
+} from '../db/actions'
 import {
   getHistoryForBlocks,
   getLastSetsForExercises,
@@ -26,6 +32,7 @@ import { ConfirmDialog } from '../components/Modal'
 import { TimerCell } from '../components/TimerCell'
 import { CardioSetRow, type CardioDraft } from '../components/CardioSetRow'
 import { ExercisePhoto } from '../components/ExercisePhoto'
+import { SetBlockModal } from '../components/SetBlockModal'
 import { SuggestionBanner } from '../components/SuggestionBanner'
 import { ChartIcon, CheckIcon, NoteIcon, PlusIcon, VideoIcon } from '../components/icons'
 import { openExternal } from '../lib/image'
@@ -112,6 +119,11 @@ export function SessionPage() {
   // progresso, o que faz o bloco concluído fechar e o próximo abrir sozinho.
   const [openBlocks, setOpenBlocks] = useState<Record<string, boolean>>({})
   const [openExercises, setOpenExercises] = useState<Record<string, boolean>>({})
+  /** Bloco cuja prescrição está sendo ajustada sem sair do treino. */
+  const [editingBlock, setEditingBlock] = useState<{
+    block: SetBlock
+    exercise: Exercise
+  } | null>(null)
 
   // Alvos da rolagem automática.
   const blockRefs = useRef<Record<string, HTMLDivElement | null>>({})
@@ -445,23 +457,33 @@ export function SessionPage() {
                         blockRefs.current[block.id] = node
                       }}
                     >
-                      <button
-                        type="button"
-                        className="collapse-head"
-                        aria-expanded={blockOpen}
-                        onClick={() =>
-                          setOpenBlocks((current) => ({
-                            ...current,
-                            [block.id]: !blockOpen,
-                          }))
-                        }
-                      >
-                        <span className={blockOpen ? 'caret is-open' : 'caret'}>›</span>
-                        <span className="block__title">
-                          {formatBlockLabel(block, blocks)}
-                        </span>
-                        {blockDone && <CheckIcon className="block__check" />}
-                      </button>
+                      <div className="row row--between">
+                        <button
+                          type="button"
+                          className="collapse-head"
+                          aria-expanded={blockOpen}
+                          onClick={() =>
+                            setOpenBlocks((current) => ({
+                              ...current,
+                              [block.id]: !blockOpen,
+                            }))
+                          }
+                        >
+                          <span className={blockOpen ? 'caret is-open' : 'caret'}>›</span>
+                          <span className="block__title">
+                            {formatBlockLabel(block, blocks)}
+                          </span>
+                          {blockDone && <CheckIcon className="block__check" />}
+                        </button>
+                        <button
+                          type="button"
+                          className="btn btn--icon btn--ghost"
+                          aria-label={`Editar ${formatBlockLabel(block, blocks)}`}
+                          onClick={() => setEditingBlock({ block, exercise })}
+                        >
+                          <NoteIcon />
+                        </button>
+                      </div>
 
                       {!blockOpen ? (
                         <div className="block__meta" style={{ marginLeft: 22 }}>
@@ -756,6 +778,20 @@ export function SessionPage() {
           </div>
         )}
       </div>
+
+      {editingBlock && (
+        // Muda o plano do bloco, não o que já foi registrado. Sem remover:
+        // apagar um bloco no meio do treino é destrutivo demais para um toque.
+        <SetBlockModal
+          exercise={editingBlock.exercise}
+          block={editingBlock.block}
+          onClose={() => setEditingBlock(null)}
+          onSave={async (form) => {
+            await updateSetBlock(editingBlock.block.id, form)
+            setEditingBlock(null)
+          }}
+        />
+      )}
 
       {confirmDiscard && (
         <ConfirmDialog

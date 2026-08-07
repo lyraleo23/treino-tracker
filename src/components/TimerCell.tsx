@@ -10,13 +10,43 @@ interface Props {
   value: string
   onChange: (value: string) => void
   disabled?: boolean
+  /**
+   * Mostra o tempo parado como minutos e segundos em vez de um campo só de
+   * segundos. Num trecho de esteira "4 : 00" é o que se lê no painel; num
+   * bloco de prancha, "60 s" é o que se pensa.
+   */
+  splitMinutes?: boolean
+}
+
+/** 263 → { min: '4', sec: '23' }; vazio devolve campos vazios. */
+function toMinSec(value: string): { min: string; sec: string } {
+  const total = Number(value)
+  if (!value.trim() || !Number.isFinite(total)) return { min: '', sec: '' }
+  const rounded = Math.max(0, Math.round(total))
+  return {
+    min: String(Math.floor(rounded / 60)),
+    sec: String(rounded % 60).padStart(2, '0'),
+  }
+}
+
+function fromMinSec(min: string, sec: string): string {
+  const minutes = Number(min.replace(',', '.')) || 0
+  const seconds = Number(sec.replace(',', '.')) || 0
+  const total = Math.round(minutes * 60 + seconds)
+  return total > 0 ? String(total) : ''
 }
 
 /**
  * Campo de tempo com cronômetro embutido: enquanto parado é um input comum;
  * ao iniciar vira contagem regressiva e devolve o tempo real executado.
  */
-export function TimerCell({ targetSeconds, value, onChange, disabled }: Props) {
+export function TimerCell({
+  targetSeconds,
+  value,
+  onChange,
+  disabled,
+  splitMinutes,
+}: Props) {
   const countdown = useCountdown(targetSeconds, () => {
     beep()
     vibrate()
@@ -29,16 +59,40 @@ export function TimerCell({ targetSeconds, value, onChange, disabled }: Props) {
   const started = countdown.running || countdown.remaining < targetSeconds - 0.05
 
   if (!started) {
+    const { min, sec } = toMinSec(value)
+
     return (
       <div className="timer">
-        <input
-          className="input input--center"
-          inputMode="numeric"
-          value={value}
-          disabled={disabled}
-          aria-label="Segundos executados"
-          onChange={(event) => onChange(event.target.value)}
-        />
+        {splitMinutes ? (
+          <div className="timer__minsec">
+            <input
+              className="input input--center"
+              inputMode="numeric"
+              value={min}
+              disabled={disabled}
+              aria-label="Minutos executados"
+              onChange={(event) => onChange(fromMinSec(event.target.value, sec))}
+            />
+            <span className="timer__colon">:</span>
+            <input
+              className="input input--center"
+              inputMode="numeric"
+              value={sec}
+              disabled={disabled}
+              aria-label="Segundos executados"
+              onChange={(event) => onChange(fromMinSec(min, event.target.value))}
+            />
+          </div>
+        ) : (
+          <input
+            className="input input--center"
+            inputMode="numeric"
+            value={value}
+            disabled={disabled}
+            aria-label="Segundos executados"
+            onChange={(event) => onChange(event.target.value)}
+          />
+        )}
         <button
           type="button"
           className="btn btn--icon"

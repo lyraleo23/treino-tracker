@@ -42,10 +42,5 @@ jobs:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
     steps:
-      # O padrão de 10 min vinha abortando um deploy que o GitHub ainda não
-      # tinha terminado — e é o próprio action que marca o deployment como
-      # falho ao desistir. 30 min dão margem para a lentidão do lado deles.
       - id: deployment
         uses: actions/deploy-pages@v4
-        with:
-          timeout: 1800000

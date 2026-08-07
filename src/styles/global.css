@@ -802,6 +802,27 @@ h3 {
   gap: 8px;
 }
 
+/* Minutos : segundos, com o dois-pontos entre os campos. */
+.timer__minsec {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex: 1;
+  min-width: 0;
+}
+
+.timer__minsec .input {
+  flex: 1;
+  min-width: 0;
+}
+
+.timer__colon {
+  color: var(--text-dim);
+  font-size: 18px;
+  font-weight: 700;
+  flex: none;
+}
+
 .timer__display {
   flex: 1;
   min-height: 44px;

@@ -70,20 +70,28 @@ export function CardioSetRow({
         </button>
       </div>
 
-      <div className="cardio-grid">
-        {fields.map((field) => (
-          <label key={field} className="cardio-field">
-            <span className="cardio-field__label">
-              {CARDIO_LABELS[field].short} ({CARDIO_LABELS[field].unit})
-            </span>
+      {/* O cronômetro ocupa a linha toda: sobra espaço para min : seg mais o
+          botão, e as demais métricas dividem a grade sem ficar em meia linha. */}
+      {fields.includes('seconds') && (
+        <label className="cardio-field" style={{ marginBottom: 8 }}>
+          <span className="cardio-field__label">{CARDIO_LABELS.seconds.short}</span>
+          <TimerCell
+            splitMinutes
+            targetSeconds={targetSeconds ?? 60}
+            value={values.seconds ?? ''}
+            onChange={(value) => onChange('seconds', value)}
+          />
+        </label>
+      )}
 
-            {field === 'seconds' ? (
-              <TimerCell
-                targetSeconds={targetSeconds ?? 60}
-                value={values.seconds ?? ''}
-                onChange={(value) => onChange('seconds', value)}
-              />
-            ) : (
+      <div className="cardio-grid">
+        {fields
+          .filter((field) => field !== 'seconds')
+          .map((field) => (
+            <label key={field} className="cardio-field">
+              <span className="cardio-field__label">
+                {CARDIO_LABELS[field].short} ({CARDIO_LABELS[field].unit})
+              </span>
               <input
                 className="input input--center"
                 inputMode="decimal"
@@ -92,9 +100,8 @@ export function CardioSetRow({
                 onChange={(event) => onChange(field, event.target.value)}
                 onBlur={onFieldBlur}
               />
-            )}
-          </label>
-        ))}
+            </label>
+          ))}
       </div>
 
       {noteOpen && (
