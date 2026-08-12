@@ -34,6 +34,26 @@ export function formatWeekday(ts: number): string {
   return weekdayFormatter.format(ts).replace('.', '')
 }
 
+/** Meia-noite do dia daquele instante — base para contar dias de calendário. */
+function startOfDay(ts: number): number {
+  const date = new Date(ts)
+  date.setHours(0, 0, 0, 0)
+  return date.getTime()
+}
+
+/**
+ * "hoje" · "ontem" · "há 3 dias". Conta dias de calendário, não períodos de 24h:
+ * às 8h da manhã, um treino das 22h de ontem é "ontem", não "há 10 horas".
+ * Passado um mês a contagem perde a graça e a data cheia informa mais.
+ */
+export function formatRelativeDay(ts: number): string {
+  const days = Math.round((startOfDay(Date.now()) - startOfDay(ts)) / 86400000)
+  if (days <= 0) return 'hoje'
+  if (days === 1) return 'ontem'
+  if (days <= 30) return `há ${days} dias`
+  return formatDate(ts)
+}
+
 /** 90 → "1:30"; 45 → "45s". */
 export function formatSeconds(total: number): string {
   const seconds = Math.max(0, Math.round(total))
@@ -81,6 +101,16 @@ export function formatBlockPlan(block: SetBlock): string {
   const target = formatTarget(block.target)
   if (block.target.kind === 'cardio' && block.sets === 1) return target
   return `${block.sets} × ${target}`
+}
+
+/**
+ * As mesmas partes de `formatBlockPlan`, separadas: o alvo é o que se consulta
+ * no meio da série, então a tela precisa poder destacá-lo sem o "3 ×" junto.
+ */
+export function blockPlanParts(block: SetBlock): { prefix?: string; target: string } {
+  const target = formatTarget(block.target)
+  if (block.target.kind === 'cardio' && block.sets === 1) return { target }
+  return { prefix: `${block.sets} ×`, target }
 }
 
 /** "4:00 · 6% · 4,2 km/h · 142 bpm" — o que foi executado num trecho. */

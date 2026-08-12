@@ -16,7 +16,7 @@ import { PageHeader } from '../components/PageHeader'
 import { EmptyState } from '../components/EmptyState'
 import { SetBlockModal, type BlockFormData } from '../components/SetBlockModal'
 import { ArrowDownIcon, ArrowUpIcon, PlusIcon } from '../components/icons'
-import { formatBlockLabel, formatBlockPlan, formatRest } from '../lib/format'
+import { blockPlanParts, formatBlockLabel, formatRest } from '../lib/format'
 
 export function WorkoutItemPage() {
   const { workoutId, itemId } = useParams<{ workoutId: string; itemId: string }>()
@@ -129,6 +129,7 @@ export function WorkoutItemPage() {
           <div className="stack">
             {blocks.map((block, index) => {
               const rest = formatRest(block)
+              const plan = blockPlanParts(block)
               return (
                 <div key={block.id} className={`card card--tight block block--${block.kind}`}>
                   <div className="row row--between">
@@ -146,8 +147,14 @@ export function WorkoutItemPage() {
                     >
                       <div className="block__title">{formatBlockLabel(block, blocks)}</div>
                       <div className="block__meta">
-                        {formatBlockPlan(block)}
-                        {rest && ` · intervalo ${rest}`}
+                        {plan.prefix && `${plan.prefix} `}
+                        <strong>{plan.target}</strong>
+                        {rest && (
+                          <>
+                            {' · intervalo '}
+                            <strong>{rest}</strong>
+                          </>
+                        )}
                       </div>
                       {block.note && <div className="block__hint">{block.note}</div>}
                     </button>

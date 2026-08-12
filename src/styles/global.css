@@ -503,13 +503,20 @@ h3 {
 
 .block__meta {
   color: var(--text-dim);
-  font-size: 13px;
-  margin-top: 1px;
+  font-size: 15px;
+  margin-top: 2px;
+}
+
+/* A faixa de reps e o intervalo são o que se consulta no meio da série — o
+   resto da linha continua discreto para eles saltarem aos olhos. */
+.block__meta strong {
+  color: var(--text);
+  font-weight: 700;
 }
 
 .block__hint {
   color: var(--text-faint);
-  font-size: 12px;
+  font-size: 13px;
   margin: 2px 0 6px;
 }
 

@@ -20,6 +20,20 @@ export function isAnchorBlock(kind: BlockKind): boolean {
   return kind === 'working' || kind === 'top'
 }
 
+/**
+ * Identidade do bloco dentro do exercício, independente de treino: o tipo mais a
+ * posição entre os do mesmo tipo. É o que permite o Working Set do Lower Body 2
+ * herdar a carga do Working Set do Lower Body 1 — o `blockId` não serve, porque
+ * cada treino tem o seu próprio WorkoutItem e, portanto, os seus próprios blocos.
+ *
+ * A numeração repete a de `formatBlockLabel` de propósito: o papel casa com o
+ * rótulo que o usuário lê na tela.
+ */
+export function blockRole(block: SetBlock, blocks: SetBlock[]): string {
+  const sameKind = blocks.filter((other) => other.kind === block.kind)
+  return `${block.kind}#${sameKind.findIndex((other) => other.id === block.id)}`
+}
+
 /** Arredonda para o múltiplo do passo do aparelho, nunca abaixo de um passo. */
 export function roundToStep(value: number, step: number): number {
   const safeStep = step > 0 ? step : DEFAULT_WEIGHT_STEP

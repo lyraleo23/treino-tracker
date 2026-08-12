@@ -22,10 +22,11 @@ import {
 import {
   getHistoryForBlocks,
   getLastSetsForExercises,
+  getPreviousExecutions,
   getProgressionSuggestion,
   type ProgressionSuggestion,
 } from '../db/queries'
-import { buildLadder, type LadderEntry } from '../lib/ladder'
+import { blockRole, buildLadder, type LadderEntry } from '../lib/ladder'
 import { PageHeader } from '../components/PageHeader'
 import { EmptyState } from '../components/EmptyState'
 import { ConfirmDialog } from '../components/Modal'
@@ -37,9 +38,11 @@ import { SuggestionBanner } from '../components/SuggestionBanner'
 import { ChartIcon, CheckIcon, NoteIcon, PlusIcon, VideoIcon } from '../components/icons'
 import { openExternal } from '../lib/image'
 import {
+  blockPlanParts,
   formatBlockLabel,
   formatBlockPlan,
   formatCardioLog,
+  formatRelativeDay,
   formatRest,
   formatSeconds,
   formatWeight,
@@ -171,26 +174,42 @@ export function SessionPage() {
     const logs = await db.setLogs.where('sessionId').equals(sessionId).toArray()
     const allBlocks = rows.flatMap((row) => row.blocks)
 
+    const exerciseIds = [...new Set(rows.map((row) => row.item.exerciseId))]
+
+    // A execução mais recente do exercício em qualquer treino é quem manda no
+    // preenchimento; as duas consultas abaixo cobrem o que ela não alcança —
+    // um bloco que só existe neste treino, um exercício estreando aqui.
+    const previousByExercise = await getPreviousExecutions(
+      exerciseIds,
+      session.workoutId,
+      sessionId,
+    )
     const lastByBlock = await getHistoryForBlocks(
       allBlocks.map((block) => block.id),
       sessionId,
     )
-    const lastByExercise = await getLastSetsForExercises(
-      [...new Set(rows.map((row) => row.item.exerciseId))],
-      sessionId,
-    )
+    const lastByExercise = await getLastSetsForExercises(exerciseIds, sessionId)
 
     const suggestions = new Map<string, ProgressionSuggestion>()
     for (const row of rows) {
       const suggestion = await getProgressionSuggestion(
         row.item.exerciseId,
         row.blocks,
+        session.workoutId,
         sessionId,
       )
       if (suggestion) suggestions.set(row.item.exerciseId, suggestion)
     }
 
-    return { session, rows, logs, lastByBlock, lastByExercise, suggestions }
+    return {
+      session,
+      rows,
+      logs,
+      previousByExercise,
+      lastByBlock,
+      lastByExercise,
+      suggestions,
+    }
   }, [sessionId])
 
   function patchDraft(key: string, patch: Draft) {
@@ -246,7 +265,15 @@ export function SessionPage() {
 
   if (!data) return <div className="page page--flush" />
 
-  const { session, rows, logs, lastByBlock, lastByExercise, suggestions } = data
+  const {
+    session,
+    rows,
+    logs,
+    previousByExercise,
+    lastByBlock,
+    lastByExercise,
+    suggestions,
+  } = data
 
   const totalPlanned = rows.reduce(
     (sum, row) => sum + row.blocks.reduce((acc, block) => acc + setCountOf(block), 0),
@@ -466,10 +493,20 @@ export function SessionPage() {
                   const isTimeRow = block.target.kind === 'time'
                   const isCardioRow = block.target.kind === 'cardio'
                   const cardioFields = exercise.cardioFields ?? DEFAULT_CARDIO_FIELDS
-                  const history = lastByBlock.get(block.id)
+
+                  // A execução mais recente do exercício manda, venha do treino
+                  // que vier — o bloco é reencontrado lá pelo papel que exerce.
+                  // O histórico do próprio bloco cobre o que ela não tem: um
+                  // back-off que só existe neste treino, por exemplo.
+                  const previous = previousByExercise.get(item.exerciseId)
+                  const fromRole = previous?.byRole.get(blockRole(block, blocks))
+                  const history = fromRole ?? lastByBlock.get(block.id)
+                  const fromOtherWorkout = !!fromRole && !previous?.sameWorkout
+
                   const last = history?.heaviest
                   const fallback = lastByExercise.get(item.exerciseId)
                   const rest = formatRest(block)
+                  const plan = blockPlanParts(block)
                   const blockLogs = logs.filter((log) => log.blockId === block.id)
 
                   // Só entra em cena onde não há histórico daquela posição: aí
@@ -524,16 +561,30 @@ export function SessionPage() {
                       ) : (
                         <>
                       <div className="block__meta">
-                        {formatBlockPlan(block)}
-                        {rest && ` · intervalo ${rest}`}
+                        {plan.prefix && `${plan.prefix} `}
+                        <strong>{plan.target}</strong>
+                        {rest && (
+                          <>
+                            {' · intervalo '}
+                            <strong>{rest}</strong>
+                          </>
+                        )}
                       </div>
                       {block.note && <div className="block__hint">{block.note}</div>}
                       <div className="block__hint">
-                        {last
-                          ? `Último: ${formatWeight(last.weight)}${
+                        {last ? (
+                          <>
+                            {`Último: ${formatWeight(last.weight)}${
                               last.reps ? ` × ${last.reps}` : ''
-                            }${last.seconds ? ` · ${formatSeconds(last.seconds)}` : ''}`
-                          : 'Primeira vez registrando este bloco.'}
+                            }${last.seconds ? ` · ${formatSeconds(last.seconds)}` : ''}`}
+                            {/* De onde veio a carga, quando não foi daqui. */}
+                            {fromOtherWorkout &&
+                              previous &&
+                              ` · ${previous.workoutName}, ${formatRelativeDay(previous.startedAt)}`}
+                          </>
+                        ) : (
+                          'Primeira vez registrando este bloco.'
+                        )}
                       </div>
 
                       {!isCardioRow && (
@@ -642,11 +693,18 @@ export function SessionPage() {
                           (log
                             ? toInput(log.weight)
                             : (toInput(before?.weight) || carryWeight))
+                        // Vindo de outro treino, a carga se aproveita mas as reps
+                        // não: o mesmo exercício pode ser 5–6 lá e 10–12 aqui,
+                        // então quem manda é o alvo deste bloco.
                         const repsValue =
                           draft.reps ??
                           (log
                             ? toInput(log.reps)
-                            : toInput(before?.reps ?? last?.reps ?? targetReps(block.target)))
+                            : toInput(
+                                fromOtherWorkout
+                                  ? targetReps(block.target)
+                                  : (before?.reps ?? last?.reps ?? targetReps(block.target)),
+                              ))
                         const secondsValue =
                           draft.seconds ??
                           (log ? toInput(log.seconds) : toInput(targetSeconds(block.target)))

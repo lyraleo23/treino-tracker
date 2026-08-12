@@ -1,6 +1,6 @@
 import Dexie from 'dexie'
 import { db, type SetBlock, type SetLog, type Target } from './db'
-import { anchorWeight, isAnchorBlock, ladderIsBroken } from '../lib/ladder'
+import { anchorWeight, blockRole, isAnchorBlock, ladderIsBroken } from '../lib/ladder'
 
 /**
  * Última série registrada para o exercício, considerando todo o histórico —
@@ -107,6 +107,117 @@ export async function getHistoryForBlocks(
   return map
 }
 
+/** As séries de um bloco numa ocasião passada, indexadas pela posição. */
+export interface RoleHistory {
+  bySetIndex: Map<number, SetLog>
+  /** A série mais pesada do bloco, referência de carga dele. */
+  heaviest: SetLog
+  /** Quantas séries o bloco previa naquela ocasião — não hoje. */
+  plannedSets: number
+}
+
+/**
+ * A última vez que o exercício foi executado, **em qualquer treino**. Os blocos
+ * vêm indexados por papel (`blockRole`) e não por id: é assim que o Working Set
+ * do Lower Body 2 alcança o que foi levantado no Working Set do Lower Body 1.
+ * Por `blockId` não daria — cada treino tem o seu próprio WorkoutItem e, com
+ * ele, os seus próprios blocos.
+ */
+export interface PreviousExecution {
+  sessionId: string
+  workoutName: string
+  startedAt: number
+  finishedAt?: number
+  /** A execução anterior foi no mesmo treino que está aberto agora? */
+  sameWorkout: boolean
+  byRole: Map<string, RoleHistory>
+}
+
+export async function getPreviousExecution(
+  exerciseId: string,
+  currentWorkoutId: string,
+  excludeSessionId?: string,
+): Promise<PreviousExecution | undefined> {
+  const logs = await db.setLogs
+    .where('[exerciseId+completedAt]')
+    .between([exerciseId, Dexie.minKey], [exerciseId, Dexie.maxKey])
+    .reverse()
+    .toArray()
+
+  const relevant = excludeSessionId
+    ? logs.filter((log) => log.sessionId !== excludeSessionId)
+    : logs
+
+  const mostRecent = relevant[0]
+  if (!mostRecent) return undefined
+
+  const session = await db.sessions.get(mostRecent.sessionId)
+  if (!session) return undefined
+
+  // Só o item daquela ocasião interessa: é dele que saem os blocos com o tipo e
+  // a ordem, e são eles que definem o papel de cada um.
+  const fromSession = relevant.filter(
+    (log) =>
+      log.sessionId === mostRecent.sessionId &&
+      log.workoutItemId === mostRecent.workoutItemId,
+  )
+
+  const blocks = await db.setBlocks
+    .where('[workoutItemId+order]')
+    .between(
+      [mostRecent.workoutItemId, Dexie.minKey],
+      [mostRecent.workoutItemId, Dexie.maxKey],
+    )
+    .toArray()
+
+  const byRole = new Map<string, RoleHistory>()
+  for (const block of blocks) {
+    const blockLogs = fromSession.filter((log) => log.blockId === block.id)
+    if (blockLogs.length === 0) continue
+
+    byRole.set(blockRole(block, blocks), {
+      bySetIndex: new Map(blockLogs.map((log) => [log.setIndex, log])),
+      heaviest: blockLogs.reduce((max, log) =>
+        (log.weight ?? 0) > (max.weight ?? 0) ? log : max,
+      ),
+      plannedSets: block.sets,
+    })
+  }
+
+  // O treino de então pode ter sido reorganizado a ponto de nenhum bloco casar;
+  // aí não há papel algum a herdar e quem chamou cai nos fallbacks de sempre.
+  if (byRole.size === 0) return undefined
+
+  return {
+    sessionId: session.id,
+    workoutName: session.workoutName,
+    startedAt: session.startedAt,
+    finishedAt: session.finishedAt,
+    sameWorkout: session.workoutId === currentWorkoutId,
+    byRole,
+  }
+}
+
+/** Mapa exerciseId → execução anterior, para montar a sessão de uma vez. */
+export async function getPreviousExecutions(
+  exerciseIds: string[],
+  currentWorkoutId: string,
+  excludeSessionId?: string,
+): Promise<Map<string, PreviousExecution>> {
+  const entries = await Promise.all(
+    exerciseIds.map(
+      async (id) =>
+        [id, await getPreviousExecution(id, currentWorkoutId, excludeSessionId)] as const,
+    ),
+  )
+
+  const map = new Map<string, PreviousExecution>()
+  for (const [id, execution] of entries) {
+    if (execution) map.set(id, execution)
+  }
+  return map
+}
+
 /** Topo da faixa de repetições do alvo; undefined para alvos de tempo. */
 function topReps(target: Target): number | undefined {
   if (target.kind === 'reps') return target.value
@@ -143,34 +254,26 @@ export interface ProgressionSuggestion {
 export async function getProgressionSuggestion(
   exerciseId: string,
   blocks: SetBlock[],
+  currentWorkoutId: string,
   excludeSessionId: string,
 ): Promise<ProgressionSuggestion | null> {
   const anchorBlocks = blocks.filter((block) => isAnchorBlock(block.kind))
   if (anchorBlocks.length === 0) return null
 
-  const logs = await db.setLogs
-    .where('[exerciseId+completedAt]')
-    .between([exerciseId, Dexie.minKey], [exerciseId, Dexie.maxKey])
-    .reverse()
-    .filter((log) => log.sessionId !== excludeSessionId)
-    .toArray()
+  const execution = await getPreviousExecution(
+    exerciseId,
+    currentWorkoutId,
+    excludeSessionId,
+  )
+  if (!execution?.finishedAt) return null
 
-  const mostRecent = logs[0]
-  if (!mostRecent) return null
-
-  const session = await db.sessions.get(mostRecent.sessionId)
-  if (!session?.finishedAt) return null
-
-  const sessionLogs = logs.filter((log) => log.sessionId === session.id)
-
-  // Carga de referência de cada bloco naquela sessão: a série mais pesada.
+  // Carga de referência de cada bloco naquela sessão: a série mais pesada do
+  // bloco de mesmo papel. É o casamento por papel — e não por id — que faz a
+  // escada atravessar treinos diferentes.
   const previous = new Map<string, number | undefined>()
   for (const block of blocks) {
-    const weights = sessionLogs
-      .filter((log) => log.blockId === block.id)
-      .map((log) => log.weight ?? 0)
-      .filter((weight) => weight > 0)
-    previous.set(block.id, weights.length > 0 ? Math.max(...weights) : undefined)
+    const weight = execution.byRole.get(blockRole(block, blocks))?.heaviest.weight
+    previous.set(block.id, weight !== undefined && weight > 0 ? weight : undefined)
   }
 
   const anchor = anchorWeight(blocks, previous)
@@ -185,9 +288,14 @@ export async function getProgressionSuggestion(
     const floor = minReps(block.target)
     if (top === undefined || floor === undefined) return null
 
-    const blockLogs = sessionLogs.filter((log) => log.blockId === block.id)
-    // Treino incompleto não é progressão nem reprovação de carga.
-    if (blockLogs.length < block.sets) todosNoTopo = false
+    const history = execution.byRole.get(blockRole(block, blocks))
+    const blockLogs = [...(history?.bySetIndex.values() ?? [])].sort(
+      (a, b) => a.setIndex - b.setIndex,
+    )
+    // Treino incompleto não é progressão nem reprovação de carga. O planejado
+    // que vale é o daquela ocasião: o mesmo working pode ser 1 série num treino
+    // e 3 noutro, e comparar com o de hoje reprovaria a sessão à toa.
+    if (blockLogs.length < (history?.plannedSets ?? block.sets)) todosNoTopo = false
 
     for (const log of blockLogs) {
       const reps = log.reps ?? 0
@@ -197,7 +305,9 @@ export async function getProgressionSuggestion(
     }
   }
 
-  const base = { exerciseId, sessionId: session.id, anchor, previous }
+  // Vindo de outro treino, dizer qual evita a sugestão parecer saída do nada.
+  const origem = execution.sameWorkout ? '' : ` (${execution.workoutName})`
+  const base = { exerciseId, sessionId: execution.sessionId, anchor, previous }
 
   // Abaixo do mínimo pesa mais: carga excessiva é problema imediato.
   if (abaixoDoMinimo) {
@@ -205,7 +315,7 @@ export async function getProgressionSuggestion(
       ...base,
       kind: 'descer',
       title: 'Sugerimos reduzir as cargas',
-      reason: `Na última sessão alguma série de working ficou abaixo do mínimo da faixa (${alcancado.join(', ')} reps).`,
+      reason: `Na última sessão${origem} alguma série de working ficou abaixo do mínimo da faixa (${alcancado.join(', ')} reps).`,
     }
   }
 
@@ -214,7 +324,7 @@ export async function getProgressionSuggestion(
       ...base,
       kind: 'subir',
       title: 'Sugerimos aumentar as cargas',
-      reason: `Você fechou o topo da faixa em todas as séries de working (${alcancado.join(', ')} reps).`,
+      reason: `Na última sessão${origem} você fechou o topo da faixa em todas as séries de working (${alcancado.join(', ')} reps).`,
     }
   }
 
@@ -223,8 +333,7 @@ export async function getProgressionSuggestion(
       ...base,
       kind: 'escada',
       title: 'Sugerimos ajustar as cargas',
-      reason:
-        'Na última sessão os feeders não subiram em direção ao working set. A escada de carga rende mais preparando o movimento aos poucos.',
+      reason: `Na última sessão${origem} os feeders não subiram em direção ao working set. A escada de carga rende mais preparando o movimento aos poucos.`,
     }
   }
 
