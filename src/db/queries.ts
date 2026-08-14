@@ -407,26 +407,6 @@ export async function getExerciseHistory(exerciseId: string): Promise<ExercisePo
   return [...bySession.values()].sort((a, b) => a.date - b.date)
 }
 
-/** Resumo de uma sessão para a lista de histórico. */
-export interface SessionSummary {
-  sets: number
-  volume: number
-  seconds: number
-  exercises: number
-}
-
-export async function getSessionSummary(sessionId: string): Promise<SessionSummary> {
-  const logs = await db.setLogs.where('sessionId').equals(sessionId).toArray()
-  const exercises = new Set(logs.map((l) => l.exerciseId))
-
-  return {
-    sets: logs.length,
-    volume: logs.reduce((sum, l) => sum + (l.weight ?? 0) * (l.reps ?? 0), 0),
-    seconds: logs.reduce((sum, l) => sum + (l.seconds ?? 0), 0),
-    exercises: exercises.size,
-  }
-}
-
 /** Sessão iniciada e ainda não finalizada, se houver. */
 export async function getOpenSession() {
   const open = await db.sessions.filter((s) => s.finishedAt === undefined).toArray()

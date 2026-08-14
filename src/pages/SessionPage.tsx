@@ -27,6 +27,8 @@ import {
   type ProgressionSuggestion,
 } from '../db/queries'
 import { blockRole, buildLadder, type LadderEntry } from '../lib/ladder'
+import { effectiveStart, logBounds } from '../lib/session'
+import { useElapsed } from '../hooks/useElapsed'
 import { PageHeader } from '../components/PageHeader'
 import { EmptyState } from '../components/EmptyState'
 import { ConfirmDialog } from '../components/Modal'
@@ -42,6 +44,7 @@ import {
   formatBlockLabel,
   formatBlockPlan,
   formatCardioLog,
+  formatDuration,
   formatRelativeDay,
   formatRest,
   formatSeconds,
@@ -252,6 +255,20 @@ export function SessionPage() {
 
   useScrollToCurrent(current, footerRef, blockRefs)
 
+  /**
+   * Início efetivo do treino — como os demais hooks, precisa vir antes dos
+   * returns de carregamento. Fica `undefined` enquanto nada foi registrado, de
+   * propósito: o relógio só começa quando o treino começa. Contá-lo desde o
+   * check-in faria o número subir na sala de espera e depois *cair* assim que a
+   * primeira série reancorasse a contagem.
+   */
+  const startedAt = useMemo(() => {
+    if (!data || data.logs.length === 0) return undefined
+    return effectiveStart(data.session, logBounds(data.logs).firstLogAt)
+  }, [data])
+
+  const elapsed = useElapsed(startedAt)
+
   if (data === null) {
     return (
       <>
@@ -380,7 +397,9 @@ export function SessionPage() {
     <>
       <PageHeader
         title={session.workoutName}
-        subtitle={`${logs.length} de ${totalPlanned} séries registradas`}
+        subtitle={`${logs.length} de ${totalPlanned} séries registradas${
+          startedAt !== undefined ? ` · ${formatDuration(elapsed)}` : ''
+        }`}
         back
         backLabel="Treinos"
         onBack={() => void handleLeave()}

@@ -11,10 +11,11 @@ import {
   formatBlockLabel,
   formatCardioLog,
   formatDateTime,
-  formatNumber,
+  formatDuration,
   formatSeconds,
   formatWeight,
 } from '../lib/format'
+import { logBounds, sessionDuration } from '../lib/session'
 
 interface NotesForm {
   notes: string
@@ -71,11 +72,13 @@ export function SessionDetailPage() {
       }
     })
 
+    const { firstLogAt, lastLogAt } = logBounds(logs)
+
     return {
       session,
       groups,
       sets: logs.length,
-      volume: logs.reduce((sum, log) => sum + (log.weight ?? 0) * (log.reps ?? 0), 0),
+      duration: sessionDuration(session, firstLogAt, lastLogAt),
       seconds: logs.reduce((sum, log) => sum + (log.seconds ?? 0), 0),
     }
   }, [sessionId])
@@ -93,7 +96,7 @@ export function SessionDetailPage() {
 
   if (!data) return <div className="page" />
 
-  const { session, groups, sets, volume, seconds } = data
+  const { session, groups, sets, duration, seconds } = data
 
   const notes: NotesForm = form ?? {
     notes: session.notes ?? '',
@@ -137,14 +140,21 @@ export function SessionDetailPage() {
             <div className="stat__label">Séries</div>
           </div>
           <div className="stat">
-            <div className="stat__value">{formatNumber(volume, 0)}</div>
-            <div className="stat__label">Volume kg</div>
+            <div className="stat__value">
+              {duration === undefined ? '—' : formatDuration(duration)}
+            </div>
+            <div className="stat__label">Duração</div>
           </div>
           <div className="stat">
             <div className="stat__value">
               {seconds > 0 ? formatSeconds(seconds) : groups.length}
             </div>
-            <div className="stat__label">{seconds > 0 ? 'Tempo' : 'Exercícios'}</div>
+            {/* "Tempo" ao lado de "Duração" seria ambíguo: este é o tempo
+                acumulado dentro das séries (prancha, esteira), não o relógio
+                de parede do treino. */}
+            <div className="stat__label">
+              {seconds > 0 ? 'Tempo em série' : 'Exercícios'}
+            </div>
           </div>
         </div>
 

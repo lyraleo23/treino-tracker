@@ -3,7 +3,8 @@ import { useLiveQuery } from 'dexie-react-hooks'
 import { db } from '../db/db'
 import { PageHeader } from '../components/PageHeader'
 import { EmptyState } from '../components/EmptyState'
-import { formatDateTime, formatNumber, formatSeconds, formatWeekday } from '../lib/format'
+import { formatDateTime, formatDuration, formatSeconds, formatWeekday } from '../lib/format'
+import { logBounds, sessionDuration } from '../lib/session'
 
 export function HistoryPage() {
   const navigate = useNavigate()
@@ -14,11 +15,12 @@ export function HistoryPage() {
 
     return all.map((session) => {
       const own = logs.filter((log) => log.sessionId === session.id)
+      const { firstLogAt, lastLogAt } = logBounds(own)
       return {
         session,
         sets: own.length,
         exercises: new Set(own.map((log) => log.exerciseId)).size,
-        volume: own.reduce((sum, log) => sum + (log.weight ?? 0) * (log.reps ?? 0), 0),
+        duration: sessionDuration(session, firstLogAt, lastLogAt),
         seconds: own.reduce((sum, log) => sum + (log.seconds ?? 0), 0),
       }
     })
@@ -41,7 +43,7 @@ export function HistoryPage() {
         )}
 
         <div className="list">
-          {sessions?.map(({ session, sets, exercises, volume, seconds }) => (
+          {sessions?.map(({ session, sets, exercises, duration, seconds }) => (
             <button
               key={session.id}
               type="button"
@@ -62,7 +64,7 @@ export function HistoryPage() {
                 </div>
                 <div className="list__meta">
                   {sets} séries · {exercises} exercícios
-                  {volume > 0 && ` · ${formatNumber(volume, 0)} kg`}
+                  {duration !== undefined && ` · ${formatDuration(duration)}`}
                   {seconds > 0 && ` · ${formatSeconds(seconds)}`}
                 </div>
               </div>

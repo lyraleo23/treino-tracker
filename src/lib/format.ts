@@ -62,6 +62,16 @@ export function formatSeconds(total: number): string {
   return `${minutes}:${String(seconds % 60).padStart(2, '0')}`
 }
 
+/**
+ * "42 min" · "1h10" — duração de treino, na escala em que ela se lê. Distinto
+ * de `formatSeconds`, que é mm:ss e continua servindo às séries.
+ */
+export function formatDuration(ms: number): string {
+  const minutes = Math.max(0, Math.round(ms / 60000))
+  if (minutes < 60) return `${minutes} min`
+  return `${Math.floor(minutes / 60)}h${String(minutes % 60).padStart(2, '0')}`
+}
+
 /** Sempre mm:ss — usado no cronômetro, onde o tamanho não pode variar. */
 export function formatClock(total: number): string {
   const seconds = Math.max(0, Math.ceil(total))
