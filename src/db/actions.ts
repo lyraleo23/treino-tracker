@@ -5,6 +5,7 @@ import {
   type Cycle,
   type Exercise,
   type ExerciseKind,
+  type Flag,
   type Program,
   type Session,
   type SetBlock,
@@ -72,15 +73,57 @@ export async function setExercisePhoto(id: string, photo: Blob | undefined): Pro
   })
 }
 
+/** Tira o exercício do catálogo sem tocar no que já foi levantado com ele. */
+export async function setExerciseArchived(id: string, archived: Flag): Promise<void> {
+  await db.exercises.update(id, { archived })
+}
+
 /**
- * Remove o exercício do catálogo e de todos os treinos. O histórico (SetLog)
- * é preservado — apagá-lo destruiria sessões passadas.
+ * Junta dois exercícios que deveriam ser um só: todo o histórico e as vagas em
+ * treinos passam para o destino, e a origem sai do catálogo.
+ *
+ * Só o `exerciseId` é reescrito. Os logs guardam também `workoutItemId` e
+ * `blockId`, que continuam apontando para itens e blocos intactos — por isso a
+ * mesclagem não precisa mexer em mais nada.
+ */
+export async function mergeExercises(sourceId: string, targetId: string): Promise<void> {
+  if (sourceId === targetId) return
+
+  await db.transaction('rw', [db.exercises, db.workoutItems, db.setLogs], async () => {
+    const target = await db.exercises.get(targetId)
+    if (!target) return
+
+    await db.setLogs.where('exerciseId').equals(sourceId).modify({ exerciseId: targetId })
+    await db.workoutItems.where('exerciseId').equals(sourceId).modify({ exerciseId: targetId })
+    await db.exercises.delete(sourceId)
+  })
+}
+
+/**
+ * Remove de vez o exercício, seus itens de treino e os blocos deles.
+ *
+ * Só vale para exercício **sem histórico**: apagar um que tem séries destruiria
+ * sessões passadas que não dá para recriar. Com histórico o caminho é arquivar
+ * ou mesclar — e a guarda mora aqui, não só na tela.
  */
 export async function deleteExercise(id: string): Promise<void> {
-  await db.transaction('rw', db.exercises, db.workoutItems, async () => {
-    await db.workoutItems.where('exerciseId').equals(id).delete()
-    await db.exercises.delete(id)
-  })
+  await db.transaction(
+    'rw',
+    [db.exercises, db.workoutItems, db.setBlocks, db.setLogs],
+    async () => {
+      if ((await db.setLogs.where('exerciseId').equals(id).count()) > 0) return
+
+      const items = await db.workoutItems.where('exerciseId').equals(id).toArray()
+      // Os blocos são filhos do item: sem apagá-los aqui ficariam no banco sem
+      // nenhum caminho que chegue de volta neles.
+      for (const item of items) {
+        await db.setBlocks.where('workoutItemId').equals(item.id).delete()
+      }
+
+      await db.workoutItems.where('exerciseId').equals(id).delete()
+      await db.exercises.delete(id)
+    },
+  )
 }
 
 // --- Programas ----------------------------------------------------------

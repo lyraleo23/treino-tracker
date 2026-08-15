@@ -11,8 +11,9 @@ import {
   YAxis,
   type TooltipProps,
 } from 'recharts'
-import { db, type ExerciseKind } from '../db/db'
-import { deleteExercise } from '../db/actions'
+import { db, type Exercise, type ExerciseKind } from '../db/db'
+import { deleteExercise, mergeExercises, setExerciseArchived } from '../db/actions'
+import { ExercisePicker } from '../components/ExercisePicker'
 import { getExerciseHistory, type ExercisePoint } from '../db/queries'
 import { PageHeader } from '../components/PageHeader'
 import { EmptyState } from '../components/EmptyState'
@@ -144,6 +145,9 @@ export function ExerciseHistoryPage() {
   const [metricKey, setMetricKey] = useState<string | null>(null)
   const [editing, setEditing] = useState(false)
   const [confirmDelete, setConfirmDelete] = useState(false)
+  const [confirmArchive, setConfirmArchive] = useState(false)
+  const [merging, setMerging] = useState(false)
+  const [mergeTarget, setMergeTarget] = useState<Exercise | null>(null)
 
   const exercise = useLiveQuery(
     async () => (exerciseId ? ((await db.exercises.get(exerciseId)) ?? null) : null),
@@ -154,6 +158,34 @@ export function ExerciseHistoryPage() {
     async () => (exerciseId ? await getExerciseHistory(exerciseId) : []),
     [exerciseId],
   )
+
+  /**
+   * Treinos onde os dois exercícios convivem. Mesclar ali deixa o treino com
+   * duas entradas do mesmo exercício — não quebra nada, mas confunde, então o
+   * aviso sai antes de confirmar.
+   */
+  const conflitos = useLiveQuery(async () => {
+    if (!exerciseId || !mergeTarget) return []
+
+    const itens = await db.workoutItems
+      .where('exerciseId')
+      .anyOf([exerciseId, mergeTarget.id])
+      .toArray()
+
+    const porTreino = new Map<string, Set<string>>()
+    for (const item of itens) {
+      const atual = porTreino.get(item.workoutId) ?? new Set<string>()
+      atual.add(item.exerciseId)
+      porTreino.set(item.workoutId, atual)
+    }
+
+    const ids = [...porTreino.entries()]
+      .filter(([, exercicios]) => exercicios.size === 2)
+      .map(([workoutId]) => workoutId)
+
+    const workouts = await db.workouts.bulkGet(ids)
+    return workouts.filter((w): w is NonNullable<typeof w> => !!w).map((w) => w.name)
+  }, [exerciseId, mergeTarget?.id])
 
   const metrics =
     exercise?.kind === 'cardio'
@@ -200,11 +232,18 @@ export function ExerciseHistoryPage() {
   )
   const latest = history.length > 0 ? metric.value(history[history.length - 1]!) : 0
 
+  // Cada ponto é uma sessão com séries deste exercício: sem ponto, sem histórico.
+  const temHistorico = history.length > 0
+
   return (
     <>
       <PageHeader
         title={exercise.name}
-        subtitle={[exercise.muscleGroup, KIND_LABELS[exercise.kind]]
+        subtitle={[
+          exercise.muscleGroup,
+          KIND_LABELS[exercise.kind],
+          exercise.archived === 1 ? 'arquivado' : undefined,
+        ]
           .filter(Boolean)
           .join(' · ')}
         back
@@ -371,15 +410,61 @@ export function ExerciseHistoryPage() {
         <div className="stack" style={{ marginTop: 22 }}>
           <button
             type="button"
-            className="btn btn--block btn--danger"
-            onClick={() => setConfirmDelete(true)}
+            className="btn btn--block"
+            onClick={() => setMerging(true)}
           >
-            Excluir exercício
+            Mesclar com outro exercício
           </button>
           <p className="hint">
-            O exercício sai do catálogo e dos treinos, mas o histórico das sessões
-            permanece.
+            Junta este a outro exercício: o histórico e as vagas nos treinos passam
+            para ele, e este sai do catálogo.
           </p>
+
+          {temHistorico ? (
+            exercise.archived === 1 ? (
+              <>
+                <button
+                  type="button"
+                  className="btn btn--block btn--primary"
+                  onClick={() => void setExerciseArchived(exercise.id, 0)}
+                >
+                  Desarquivar exercício
+                </button>
+                <p className="hint">
+                  Ele volta para o catálogo e para o seletor de exercícios dos treinos.
+                </p>
+              </>
+            ) : (
+              <>
+                <button
+                  type="button"
+                  className="btn btn--block"
+                  onClick={() => setConfirmArchive(true)}
+                >
+                  Arquivar exercício
+                </button>
+                <p className="hint">
+                  Sai do catálogo e do seletor dos treinos, mas o histórico e este
+                  gráfico continuam aqui. Exercício com série registrada não se
+                  exclui — apagar destruiria sessões passadas.
+                </p>
+              </>
+            )
+          ) : (
+            <>
+              <button
+                type="button"
+                className="btn btn--block btn--danger"
+                onClick={() => setConfirmDelete(true)}
+              >
+                Excluir exercício
+              </button>
+              <p className="hint">
+                Nunca teve série registrada, então some de vez — junto com os blocos
+                que tiver montados nos treinos.
+              </p>
+            </>
+          )}
         </div>
       </div>
 
@@ -387,10 +472,60 @@ export function ExerciseHistoryPage() {
         <ExerciseFormModal exercise={exercise} onClose={() => setEditing(false)} />
       )}
 
+      {merging && (
+        <ExercisePicker
+          title="Mesclar com qual exercício?"
+          hint={`Tudo que está em "${exercise.name}" passa para o escolhido, e este some do catálogo.`}
+          kind={exercise.kind}
+          excludeIds={[exercise.id]}
+          allowCreate={false}
+          onClose={() => setMerging(false)}
+          onPick={(alvo) => {
+            setMerging(false)
+            setMergeTarget(alvo)
+          }}
+        />
+      )}
+
+      {mergeTarget && (
+        <ConfirmDialog
+          title="Mesclar exercícios"
+          message={[
+            `As séries e as vagas nos treinos de "${exercise.name}" passam para "${mergeTarget.name}", e "${exercise.name}" sai do catálogo.`,
+            conflitos && conflitos.length > 0
+              ? `Atenção: os dois estão em ${conflitos.join(', ')} — o treino ficará com duas entradas de "${mergeTarget.name}", que você pode remover depois.`
+              : '',
+          ]
+            .filter(Boolean)
+            .join(' ')}
+          confirmLabel="Mesclar"
+          onCancel={() => setMergeTarget(null)}
+          onConfirm={async () => {
+            const destino = mergeTarget.id
+            setMergeTarget(null)
+            await mergeExercises(exercise.id, destino)
+            navigate(`/exercicios/${destino}`, { replace: true })
+          }}
+        />
+      )}
+
+      {confirmArchive && (
+        <ConfirmDialog
+          title="Arquivar exercício"
+          message={`"${exercise.name}" sai do catálogo e do seletor dos treinos. O histórico e o gráfico de evolução continuam acessíveis, e dá para desarquivar quando quiser.`}
+          confirmLabel="Arquivar"
+          onCancel={() => setConfirmArchive(false)}
+          onConfirm={async () => {
+            await setExerciseArchived(exercise.id, 1)
+            setConfirmArchive(false)
+          }}
+        />
+      )}
+
       {confirmDelete && (
         <ConfirmDialog
           title="Excluir exercício"
-          message={`"${exercise.name}" será removido do catálogo e de todos os treinos.`}
+          message={`"${exercise.name}" será removido do catálogo e de todos os treinos, junto com os blocos de série que tiver montados. Ele nunca teve série registrada, então nenhum histórico se perde.`}
           confirmLabel="Excluir"
           danger
           onCancel={() => setConfirmDelete(false)}

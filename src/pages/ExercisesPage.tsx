@@ -37,6 +37,16 @@ export function ExercisesPage() {
     [],
   )
 
+  // Sem uma porta de entrada aqui, um exercício arquivado ficaria inalcançável
+  // para desarquivar — o gráfico dele só é acessível por link direto.
+  const archived = useLiveQuery(
+    async () =>
+      (await db.exercises.filter((e) => e.archived === 1).toArray()).sort((a, b) =>
+        a.name.localeCompare(b.name, 'pt-BR'),
+      ),
+    [],
+  )
+
   const filtered = useMemo(() => {
     if (!exercises) return []
     const term = search.trim().toLowerCase()
@@ -123,6 +133,34 @@ export function ExercisesPage() {
             </div>
           </section>
         ))}
+
+        {archived && archived.length > 0 && !search && (
+          <section>
+            <h2 className="section-title">Arquivados</h2>
+            <div className="list">
+              {archived.map((exercise) => (
+                <button
+                  key={exercise.id}
+                  type="button"
+                  className="list__item"
+                  onClick={() => navigate(`/exercicios/${exercise.id}`)}
+                >
+                  <ExercisePhoto photo={exercise.photo} name={exercise.name} />
+                  <div className="list__main">
+                    <div className="list__name">{exercise.name}</div>
+                    <div className="list__meta">
+                      {KIND_LABELS[exercise.kind]} · fora do catálogo
+                    </div>
+                  </div>
+                  <span className="chevron">›</span>
+                </button>
+              ))}
+            </div>
+            <p className="hint" style={{ marginTop: 8 }}>
+              O histórico deles continua inteiro. Abra para desarquivar.
+            </p>
+          </section>
+        )}
       </div>
 
       {creating && (

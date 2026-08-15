@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react'
 import { useLiveQuery } from 'dexie-react-hooks'
-import { db, type Exercise } from '../db/db'
+import { db, type Exercise, type ExerciseKind } from '../db/db'
 import { KIND_LABELS } from '../lib/format'
 import { Modal } from './Modal'
 import { ExerciseFormModal } from './ExerciseFormModal'
@@ -8,11 +8,29 @@ import { ExerciseFormModal } from './ExerciseFormModal'
 interface Props {
   /** Exercícios já presentes no treino, marcados como adicionados. */
   usedIds?: string[]
+  /** Some da lista por completo — o destino de uma mesclagem, por exemplo. */
+  excludeIds?: string[]
+  /** Restringe a um tipo só; usado pela mesclagem, que não mistura reps e tempo. */
+  kind?: ExerciseKind
+  title?: string
+  /** Texto acima da busca, quando a escolha precisa de contexto. */
+  hint?: string
+  /** Criar na hora não faz sentido ao escolher destino de mesclagem. */
+  allowCreate?: boolean
   onPick: (exercise: Exercise) => void
   onClose: () => void
 }
 
-export function ExercisePicker({ usedIds = [], onPick, onClose }: Props) {
+export function ExercisePicker({
+  usedIds = [],
+  excludeIds = [],
+  kind,
+  title = 'Adicionar exercício',
+  hint,
+  allowCreate = true,
+  onPick,
+  onClose,
+}: Props) {
   const [search, setSearch] = useState('')
   const [creating, setCreating] = useState(false)
 
@@ -25,6 +43,8 @@ export function ExercisePicker({ usedIds = [], onPick, onClose }: Props) {
     if (!exercises) return []
     const term = search.trim().toLowerCase()
     return exercises
+      .filter((e) => !excludeIds.includes(e.id))
+      .filter((e) => !kind || e.kind === kind)
       .filter(
         (e) =>
           !term ||
@@ -32,25 +52,32 @@ export function ExercisePicker({ usedIds = [], onPick, onClose }: Props) {
           (e.muscleGroup ?? '').toLowerCase().includes(term),
       )
       .sort((a, b) => a.name.localeCompare(b.name, 'pt-BR'))
-  }, [exercises, search])
+  }, [exercises, search, kind, excludeIds])
 
   return (
     <>
       <Modal
-        title="Adicionar exercício"
+        title={title}
         onClose={onClose}
         actions={
           <>
             <button type="button" className="btn btn--ghost" onClick={onClose}>
               Fechar
             </button>
-            <button type="button" className="btn" onClick={() => setCreating(true)}>
-              Criar novo
-            </button>
+            {allowCreate && (
+              <button type="button" className="btn" onClick={() => setCreating(true)}>
+                Criar novo
+              </button>
+            )}
           </>
         }
       >
         <div className="stack">
+          {hint && (
+            <p className="hint" style={{ margin: 0 }}>
+              {hint}
+            </p>
+          )}
           <input
             className="input"
             type="search"
@@ -62,7 +89,9 @@ export function ExercisePicker({ usedIds = [], onPick, onClose }: Props) {
 
           {filtered.length === 0 ? (
             <p className="hint" style={{ margin: '8px 0' }}>
-              Nenhum exercício encontrado. Use "Criar novo".
+              {allowCreate
+                ? 'Nenhum exercício encontrado. Use "Criar novo".'
+                : 'Nenhum exercício compatível encontrado.'}
             </p>
           ) : (
             <div className="list">
