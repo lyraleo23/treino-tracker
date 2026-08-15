@@ -5,6 +5,7 @@ import {
   type Cycle,
   type Exercise,
   type ExerciseKind,
+  type Program,
   type Session,
   type SetBlock,
   type SetLog,
@@ -82,34 +83,48 @@ export async function deleteExercise(id: string): Promise<void> {
   })
 }
 
-// --- Treinos ------------------------------------------------------------
+// --- Programas ----------------------------------------------------------
 
-export async function createWorkout(name: string, cycle?: Cycle): Promise<string> {
-  const last = await db.workouts.orderBy('order').last()
-  const workout: Workout = {
+export async function createProgram(name: string, cycle?: Cycle): Promise<string> {
+  const [last, total] = await Promise.all([
+    db.programs.orderBy('order').last(),
+    db.programs.count(),
+  ])
+
+  const program: Program = {
     id: newId(),
     name: name.trim(),
     order: (last?.order ?? -1) + 1,
-    archived: 0,
+    // Nasce guardado quando já existe um programa rodando: assim dá para montar
+    // a próxima bateria com calma sem esvaziar a aba Treinos antes da hora.
+    archived: total === 0 ? 0 : 1,
     createdAt: Date.now(),
     cycle,
     cycleStartedAt: cycle ? Date.now() : undefined,
   }
-  await db.workouts.add(workout)
-  return workout.id
+  await db.programs.add(program)
+  return program.id
 }
 
-export async function updateWorkout(
+/** Ativa um programa e guarda os demais — só um fica ativo por vez. */
+export async function activateProgram(id: string): Promise<void> {
+  await db.transaction('rw', db.programs, async () => {
+    await db.programs.toCollection().modify({ archived: 1 })
+    await db.programs.update(id, { archived: 0 })
+  })
+}
+
+export async function updateProgram(
   id: string,
   data: { name: string; cycle?: Cycle },
 ): Promise<void> {
-  const current = await db.workouts.get(id)
+  const current = await db.programs.get(id)
   if (!current) return
 
   // Começou um ciclo agora (ou trocou o método): a contagem recomeça.
   const cycleChanged = JSON.stringify(current.cycle) !== JSON.stringify(data.cycle)
 
-  await db.workouts.update(id, {
+  await db.programs.update(id, {
     name: data.name.trim(),
     cycle: data.cycle,
     cycleStartedAt: data.cycle
@@ -121,12 +136,12 @@ export async function updateWorkout(
 }
 
 /** Recomeça a contagem do ciclo mantendo o método escolhido. */
-export async function renewCycle(id: string): Promise<void> {
-  const workout = await db.workouts.get(id)
-  if (!workout?.cycle) return
+export async function renewProgramCycle(id: string): Promise<void> {
+  const program = await db.programs.get(id)
+  if (!program?.cycle) return
 
   const cycle: Cycle =
-    workout.cycle.kind === 'date'
+    program.cycle.kind === 'date'
       ? // Data já passou: estende pelo mesmo tamanho do ciclo anterior.
         {
           kind: 'date',
@@ -134,26 +149,170 @@ export async function renewCycle(id: string): Promise<void> {
             Date.now() +
             Math.max(
               7 * 86400000,
-              workout.cycle.until - (workout.cycleStartedAt ?? workout.createdAt),
+              program.cycle.until - (program.cycleStartedAt ?? program.createdAt),
             ),
         }
-      : workout.cycle
+      : program.cycle
 
-  await db.workouts.update(id, { cycle, cycleStartedAt: Date.now() })
+  await db.programs.update(id, { cycle, cycleStartedAt: Date.now() })
+}
+
+/**
+ * Apaga o programa e todo o plano dentro dele. As sessões já realizadas
+ * continuam no histórico: elas guardam o nome do treino como snapshot.
+ */
+export async function deleteProgram(id: string): Promise<void> {
+  await db.transaction(
+    'rw',
+    [db.programs, db.workouts, db.workoutItems, db.setBlocks],
+    async () => {
+      // Sem nenhum programa não haveria onde criar treino: o último nunca sai.
+      if ((await db.programs.count()) <= 1) return
+
+      const program = await db.programs.get(id)
+      // O ativo não se apaga; é preciso ativar outro antes.
+      if (!program || program.archived === 0) return
+
+      const workouts = await db.workouts.where('programId').equals(id).toArray()
+      for (const workout of workouts) {
+        const items = await db.workoutItems.where('workoutId').equals(workout.id).toArray()
+        for (const item of items) {
+          await db.setBlocks.where('workoutItemId').equals(item.id).delete()
+        }
+        await db.workoutItems.where('workoutId').equals(workout.id).delete()
+      }
+
+      await db.workouts.where('programId').equals(id).delete()
+      await db.programs.delete(id)
+    },
+  )
+}
+
+/**
+ * Copia o plano de um treino para outro programa: treino, itens e blocos com
+ * ids novos. Sessões e séries não vêm junto — são histórico, não plano. Ainda
+ * assim a cópia abre com as cargas certas, porque a busca do último peso casa
+ * os blocos por papel e não por id.
+ */
+export async function copyWorkoutToProgram(
+  workoutId: string,
+  targetProgramId: string,
+): Promise<string | undefined> {
+  return db.transaction(
+    'rw',
+    [db.workouts, db.workoutItems, db.setBlocks],
+    async () => {
+      const source = await db.workouts.get(workoutId)
+      if (!source) return undefined
+
+      const last = await db.workouts
+        .where('[programId+order]')
+        .between([targetProgramId, Dexie.minKey], [targetProgramId, Dexie.maxKey])
+        .last()
+
+      const copy: Workout = {
+        id: newId(),
+        programId: targetProgramId,
+        name: source.name,
+        order: (last?.order ?? -1) + 1,
+        archived: 0,
+        createdAt: Date.now(),
+      }
+      await db.workouts.add(copy)
+
+      const items = await db.workoutItems
+        .where('[workoutId+order]')
+        .between([workoutId, Dexie.minKey], [workoutId, Dexie.maxKey])
+        .toArray()
+
+      for (const item of items) {
+        const itemCopy: WorkoutItem = { ...item, id: newId(), workoutId: copy.id }
+        await db.workoutItems.add(itemCopy)
+
+        const blocks = await db.setBlocks
+          .where('[workoutItemId+order]')
+          .between([item.id, Dexie.minKey], [item.id, Dexie.maxKey])
+          .toArray()
+
+        await db.setBlocks.bulkAdd(
+          blocks.map((block) => ({ ...block, id: newId(), workoutItemId: itemCopy.id })),
+        )
+      }
+
+      return copy.id
+    },
+  )
+}
+
+/** Clona o programa inteiro — o atalho para montar a próxima bateria. */
+export async function duplicateProgram(id: string, name: string): Promise<string> {
+  const source = await db.programs.get(id)
+  const targetId = await createProgram(name, source?.cycle)
+
+  const workouts = await db.workouts
+    .where('[programId+order]')
+    .between([id, Dexie.minKey], [id, Dexie.maxKey])
+    .toArray()
+
+  for (const workout of workouts) {
+    await copyWorkoutToProgram(workout.id, targetId)
+  }
+
+  return targetId
+}
+
+// --- Treinos ------------------------------------------------------------
+
+export async function createWorkout(programId: string, name: string): Promise<string> {
+  const last = await db.workouts
+    .where('[programId+order]')
+    .between([programId, Dexie.minKey], [programId, Dexie.maxKey])
+    .last()
+
+  const workout: Workout = {
+    id: newId(),
+    programId,
+    name: name.trim(),
+    order: (last?.order ?? -1) + 1,
+    archived: 0,
+    createdAt: Date.now(),
+  }
+  await db.workouts.add(workout)
+  return workout.id
+}
+
+export async function updateWorkout(id: string, data: { name: string }): Promise<void> {
+  await db.workouts.update(id, { name: data.name.trim() })
 }
 
 /** Apaga o treino e seus itens; as sessões já realizadas continuam no histórico. */
 export async function deleteWorkout(id: string): Promise<void> {
-  await db.transaction('rw', db.workouts, db.workoutItems, async () => {
+  await db.transaction('rw', [db.workouts, db.workoutItems, db.setBlocks], async () => {
+    const items = await db.workoutItems.where('workoutId').equals(id).toArray()
+    // Os blocos são filhos do item: sem apagá-los aqui ficariam no banco para
+    // sempre, sem nenhum caminho que chegue de volta neles.
+    for (const item of items) {
+      await db.setBlocks.where('workoutItemId').equals(item.id).delete()
+    }
+
     await db.workoutItems.where('workoutId').equals(id).delete()
     await db.workouts.delete(id)
   })
 }
 
-/** Troca a posição de dois treinos adjacentes. */
+/** Troca a posição de dois treinos adjacentes dentro do programa. */
 export async function moveWorkout(id: string, direction: -1 | 1): Promise<void> {
   await db.transaction('rw', db.workouts, async () => {
-    const all = await db.workouts.orderBy('order').toArray()
+    const workout = await db.workouts.get(id)
+    if (!workout) return
+
+    // A ordem é interna ao programa: comparar com treinos de outra bateria
+    // trocaria posições que não estão na tela.
+    const all = await db.workouts
+      .where('[programId+order]')
+      .between([workout.programId, Dexie.minKey], [workout.programId, Dexie.maxKey])
+      .toArray()
+
     const index = all.findIndex((w) => w.id === id)
     const target = index + direction
     if (index < 0 || target < 0 || target >= all.length) return

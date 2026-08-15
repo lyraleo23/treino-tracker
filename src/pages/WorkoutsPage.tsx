@@ -1,12 +1,13 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useLiveQuery } from 'dexie-react-hooks'
-import { db, type Cycle, type Session, type Workout } from '../db/db'
+import Dexie from 'dexie'
+import { db, type Program, type Session, type Workout } from '../db/db'
 import {
   createWorkout,
   discardSession,
   moveWorkout,
-  renewCycle,
+  renewProgramCycle,
   startSession,
 } from '../db/actions'
 import { PageHeader } from '../components/PageHeader'
@@ -20,7 +21,6 @@ interface WorkoutCard {
   workout: Workout
   exercises: number
   lastSession?: number
-  cycleDone: number
 }
 
 export function WorkoutsPage() {
@@ -29,29 +29,43 @@ export function WorkoutsPage() {
   const [conflict, setConflict] = useState<{ workout: Workout; open: Session } | null>(null)
 
   const data = useLiveQuery(async () => {
-    const workouts = await db.workouts.filter((w) => w.archived === 0).sortBy('order')
+    // Exatamente um programa fica ativo; é dele que a aba mostra os treinos.
+    const program = await db.programs.filter((p) => p.archived === 0).first()
+
+    const workouts = program
+      ? await db.workouts
+          .where('[programId+order]')
+          .between([program.id, Dexie.minKey], [program.id, Dexie.maxKey])
+          .filter((w) => w.archived === 0)
+          .toArray()
+      : []
+
     const items = await db.workoutItems.toArray()
     const sessions = await db.sessions.toArray()
 
     const cards: WorkoutCard[] = workouts.map((workout) => {
-      const finished = sessions.filter(
-        (s) => s.workoutId === workout.id && s.finishedAt !== undefined,
-      )
-      const done = finished.map((s) => s.finishedAt!)
-      const cycleStart = workout.cycleStartedAt ?? 0
+      const done = sessions
+        .filter((s) => s.workoutId === workout.id && s.finishedAt !== undefined)
+        .map((s) => s.finishedAt!)
       return {
         workout,
         exercises: items.filter((i) => i.workoutId === workout.id).length,
         lastSession: done.length > 0 ? Math.max(...done) : undefined,
-        cycleDone: finished.filter((s) => s.startedAt >= cycleStart).length,
       }
     })
+
+    // A validade é do programa: conta as sessões de todos os treinos dele.
+    const ids = new Set(workouts.map((w) => w.id))
+    const cycleStart = program?.cycleStartedAt ?? 0
+    const cycleDone = sessions.filter(
+      (s) => ids.has(s.workoutId) && s.finishedAt !== undefined && s.startedAt >= cycleStart,
+    ).length
 
     const open = sessions
       .filter((s) => s.finishedAt === undefined)
       .sort((a, b) => b.startedAt - a.startedAt)[0]
 
-    return { cards, open }
+    return { program, cards, cycleDone, open }
   }, [])
 
   async function handleStart(workout: Workout) {
@@ -68,28 +82,29 @@ export function WorkoutsPage() {
     navigate(`/sessao/${await startSession(workout)}`)
   }
 
-  async function handleCreate(name: string, cycle?: Cycle) {
-    const id = await createWorkout(name, cycle)
+  async function handleCreate(program: Program, name: string) {
+    const id = await createWorkout(program.id, name)
     setCreating(false)
     navigate(`/treinos/${id}`)
   }
 
+  const program = data?.program
   const cards = data?.cards ?? []
   const open = data?.open
+  const cycle = formatCycle(program?.cycle, data?.cycleDone ?? 0)
 
   return (
     <>
       <PageHeader
         title="Treinos"
-        subtitle="Monte seus treinos e registre as sessões"
+        subtitle={program?.name ?? 'Nenhum programa ativo'}
         action={
           <button
             type="button"
-            className="btn btn--icon btn--primary"
-            aria-label="Novo treino"
-            onClick={() => setCreating(true)}
+            className="btn btn--sm"
+            onClick={() => navigate('/programas')}
           >
-            <PlusIcon />
+            Programas
           </button>
         }
       />
@@ -111,7 +126,39 @@ export function WorkoutsPage() {
           </div>
         )}
 
-        {data && cards.length === 0 && (
+        {cycle && (
+          <div className="row row--between" style={{ marginBottom: 14 }}>
+            <span className={cycle.expired ? 'chip chip--warn' : 'chip'}>{cycle.label}</span>
+            {cycle.expired && program && (
+              <button
+                type="button"
+                className="btn btn--sm"
+                onClick={() => void renewProgramCycle(program.id)}
+              >
+                Renovar ciclo
+              </button>
+            )}
+          </div>
+        )}
+
+        {data && !program && (
+          <EmptyState
+            icon="🗂️"
+            title="Nenhum programa ativo"
+            description="Os treinos moram dentro de um programa. Ative ou crie um para começar."
+            action={
+              <button
+                type="button"
+                className="btn btn--primary"
+                onClick={() => navigate('/programas')}
+              >
+                Ver programas
+              </button>
+            }
+          />
+        )}
+
+        {data && program && cards.length === 0 && (
           <EmptyState
             icon="🏋️"
             title="Nenhum treino ainda"
@@ -129,9 +176,7 @@ export function WorkoutsPage() {
         )}
 
         <div className="stack">
-          {cards.map(({ workout, exercises, lastSession, cycleDone }, index) => {
-            const cycle = formatCycle(workout.cycle, cycleDone)
-            return (
+          {cards.map(({ workout, exercises, lastSession }, index) => (
             <div key={workout.id} className="card">
               <div className="row row--between">
                 <div style={{ minWidth: 0 }}>
@@ -140,14 +185,6 @@ export function WorkoutsPage() {
                     {exercises} {exercises === 1 ? 'exercício' : 'exercícios'}
                     {lastSession ? ` · última: ${formatDate(lastSession)}` : ' · nunca feito'}
                   </div>
-                  {cycle && (
-                    <span
-                      className={cycle.expired ? 'chip chip--warn' : 'chip'}
-                      style={{ marginTop: 6 }}
-                    >
-                      {cycle.label}
-                    </span>
-                  )}
                 </div>
                 <div className="row" style={{ gap: 4 }}>
                   <button
@@ -195,27 +232,26 @@ export function WorkoutsPage() {
                   Adicione exercícios para poder iniciar.
                 </p>
               )}
-
-              {cycle?.expired && (
-                <button
-                  type="button"
-                  className="btn btn--sm btn--block"
-                  style={{ marginTop: 8 }}
-                  onClick={() => void renewCycle(workout.id)}
-                >
-                  Renovar ciclo
-                </button>
-              )}
             </div>
-            )
-          })}
+          ))}
         </div>
+
+        {program && cards.length > 0 && (
+          <button
+            type="button"
+            className="btn btn--block"
+            style={{ marginTop: 14 }}
+            onClick={() => setCreating(true)}
+          >
+            <PlusIcon width={16} height={16} /> Novo treino
+          </button>
+        )}
       </div>
 
-      {creating && (
+      {creating && program && (
         <WorkoutFormModal
           onClose={() => setCreating(false)}
-          onSave={({ name, cycle }) => void handleCreate(name, cycle)}
+          onSave={({ name }) => void handleCreate(program, name)}
         />
       )}
 

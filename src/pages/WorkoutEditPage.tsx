@@ -5,6 +5,7 @@ import Dexie from 'dexie'
 import { db, type Exercise } from '../db/db'
 import {
   addWorkoutItem,
+  copyWorkoutToProgram,
   deleteWorkout,
   deleteWorkoutItem,
   moveWorkoutItem,
@@ -27,6 +28,8 @@ export function WorkoutEditPage() {
   const [pendingExercise, setPendingExercise] = useState<Exercise | null>(null)
   const [removingItem, setRemovingItem] = useState<{ id: string; name: string } | null>(null)
   const [renaming, setRenaming] = useState(false)
+  const [copying, setCopying] = useState(false)
+  const [copiedTo, setCopiedTo] = useState<string | null>(null)
   const [confirmDelete, setConfirmDelete] = useState(false)
 
   const data = useLiveQuery(async () => {
@@ -51,7 +54,12 @@ export function WorkoutEditPage() {
       })),
     )
 
-    return { workout, rows }
+    // Destinos possíveis da cópia: qualquer programa menos o que já a contém.
+    const programs = (await db.programs.orderBy('order').toArray()).filter(
+      (p) => p.id !== workout.programId,
+    )
+
+    return { workout, rows, programs }
   }, [workoutId])
 
   async function handleAdd(exercise: Exercise, preset?: BlockPreset) {
@@ -75,7 +83,7 @@ export function WorkoutEditPage() {
 
   if (!data) return <div className="page" />
 
-  const { workout, rows } = data
+  const { workout, rows, programs } = data
 
   return (
     <>
@@ -185,6 +193,13 @@ export function WorkoutEditPage() {
           </button>
           <button
             type="button"
+            className="btn btn--block"
+            onClick={() => setCopying(true)}
+          >
+            Copiar para outro programa
+          </button>
+          <button
+            type="button"
             className="btn btn--block btn--danger"
             onClick={() => setConfirmDelete(true)}
           >
@@ -195,6 +210,66 @@ export function WorkoutEditPage() {
           </p>
         </div>
       </div>
+
+      {copying && (
+        <Modal
+          title="Copiar para outro programa"
+          onClose={() => {
+            setCopying(false)
+            setCopiedTo(null)
+          }}
+          actions={
+            <button
+              type="button"
+              className="btn btn--ghost btn--block"
+              onClick={() => {
+                setCopying(false)
+                setCopiedTo(null)
+              }}
+            >
+              Fechar
+            </button>
+          }
+        >
+          {programs.length === 0 ? (
+            <p className="hint" style={{ marginTop: 0 }}>
+              Não há outro programa para receber a cópia. Crie um na tela de Programas.
+            </p>
+          ) : (
+            <>
+              <p className="hint" style={{ marginTop: 0 }}>
+                O plano é copiado inteiro — exercícios e blocos. O histórico não vem
+                junto, mas as cargas da primeira sessão já vêm do que você levantou aqui.
+              </p>
+              <div className="stack">
+                {programs.map((program) => (
+                  <button
+                    key={program.id}
+                    type="button"
+                    className="btn btn--block"
+                    onClick={async () => {
+                      await copyWorkoutToProgram(workout.id, program.id)
+                      setCopiedTo(program.name)
+                    }}
+                  >
+                    {program.name}
+                    {program.archived === 0 && (
+                      <span className="chip chip--accent" style={{ marginLeft: 6 }}>
+                        ativo
+                      </span>
+                    )}
+                  </button>
+                ))}
+              </div>
+              {copiedTo && (
+                <p className="hint">
+                  <strong>{workout.name}</strong> copiado para {copiedTo}.
+                </p>
+              )}
+            </>
+          )}
+        </Modal>
+      )}
 
       {picking && (
         <ExercisePicker
@@ -306,8 +381,8 @@ export function WorkoutEditPage() {
         <WorkoutFormModal
           workout={workout}
           onClose={() => setRenaming(false)}
-          onSave={async ({ name, cycle }) => {
-            await updateWorkout(workout.id, { name, cycle })
+          onSave={async ({ name }) => {
+            await updateWorkout(workout.id, { name })
             setRenaming(false)
           }}
         />

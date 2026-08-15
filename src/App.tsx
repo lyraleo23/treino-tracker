@@ -2,6 +2,7 @@ import { Suspense, lazy } from 'react'
 import { HashRouter, Navigate, Route, Routes } from 'react-router-dom'
 import { AppShell } from './components/AppShell'
 import { WorkoutsPage } from './pages/WorkoutsPage'
+import { ProgramsPage } from './pages/ProgramsPage'
 import { WorkoutEditPage } from './pages/WorkoutEditPage'
 import { WorkoutItemPage } from './pages/WorkoutItemPage'
 import { SessionPage } from './pages/SessionPage'
@@ -28,6 +29,7 @@ export function App() {
       <Routes>
         <Route element={<AppShell />}>
           <Route path="/" element={<WorkoutsPage />} />
+          <Route path="/programas" element={<ProgramsPage />} />
           <Route path="/treinos/:workoutId" element={<WorkoutEditPage />} />
           <Route path="/treinos/:workoutId/item/:itemId" element={<WorkoutItemPage />} />
           <Route path="/historico" element={<HistoryPage />} />

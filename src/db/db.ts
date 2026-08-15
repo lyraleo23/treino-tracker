@@ -56,21 +56,36 @@ export interface Exercise {
   createdAt: number
 }
 
-/** Fim do ciclo do treino: por data-limite ou por número de sessões. */
+/** Fim do ciclo do programa: por data-limite ou por número de sessões. */
 export type Cycle =
   | { kind: 'date'; until: number }
   | { kind: 'sessions'; target: number }
 
-/** Um treino: "Treino A", "Treino B"... */
-export interface Workout {
+/**
+ * Uma bateria de treinos: "Treino de Agosto". Trocar de programa é arquivar o
+ * atual e ativar outro — o plano antigo continua inteiro, só sai da frente.
+ * Exatamente um programa fica ativo por vez.
+ */
+export interface Program {
   id: string
   name: string
   order: number
+  /** 0 é o programa ativo; 1 é guardado. */
   archived: Flag
   createdAt: number
   cycle?: Cycle
   /** Renovar o ciclo é só reposicionar isto; zera a contagem de sessões. */
   cycleStartedAt?: number
+}
+
+/** Um treino: "Treino A", "Treino B"... sempre dentro de um programa. */
+export interface Workout {
+  id: string
+  programId: string
+  name: string
+  order: number
+  archived: Flag
+  createdAt: number
 }
 
 export type Target =
@@ -173,8 +188,22 @@ type LegacyWorkoutItem = WorkoutItem & {
   restSeconds?: number
 }
 
+/** Formato da v2, onde a validade morava em cada treino. */
+type LegacyWorkout = Workout & {
+  cycle?: Cycle
+  cycleStartedAt?: number
+}
+
+const monthFormatter = new Intl.DateTimeFormat('pt-BR', { month: 'long' })
+
+/** "Treino de agosto" — nome de partida do programa, feito para ser trocado. */
+export function defaultProgramName(at = Date.now()): string {
+  return `Treino de ${monthFormatter.format(at)}`
+}
+
 class TreinoDB extends Dexie {
   exercises!: Table<Exercise, string>
+  programs!: Table<Program, string>
   workouts!: Table<Workout, string>
   workoutItems!: Table<WorkoutItem, string>
   setBlocks!: Table<SetBlock, string>
@@ -236,6 +265,48 @@ class TreinoDB extends Dexie {
           .toCollection()
           .modify((log: SetLog) => {
             log.blockId = blockByItem.get(log.workoutItemId) ?? ''
+          })
+      })
+
+    this.version(3)
+      .stores({
+        programs: 'id, order, archived',
+        workouts: 'id, programId, order, archived, [programId+order]',
+      })
+      .upgrade(async (tx) => {
+        // Os treinos soltos da v2 viram a primeira bateria, e a validade que
+        // vivia em cada um sobe para ela.
+        const workouts = await tx.table<LegacyWorkout>('workouts').toArray()
+
+        // Só dá para herdar a validade se todos concordarem: com ciclos
+        // divergentes não há como escolher qual deles manda, então o programa
+        // nasce sem validade em vez de eleger um por conta própria.
+        const comCiclo = workouts.filter((w) => w.cycle)
+        const distintos = new Set(comCiclo.map((w) => JSON.stringify(w.cycle)))
+        const herdado = distintos.size === 1 ? comCiclo[0] : undefined
+
+        const now = Date.now()
+        const program: Program = {
+          id: newId(),
+          name: defaultProgramName(now),
+          order: 0,
+          archived: 0,
+          createdAt: now,
+          cycle: herdado?.cycle,
+          cycleStartedAt: herdado
+            ? Math.min(...comCiclo.map((w) => w.cycleStartedAt ?? w.createdAt))
+            : undefined,
+        }
+
+        await tx.table('programs').add(program)
+
+        await tx
+          .table('workouts')
+          .toCollection()
+          .modify((workout: LegacyWorkout) => {
+            workout.programId = program.id
+            delete workout.cycle
+            delete workout.cycleStartedAt
           })
       })
   }

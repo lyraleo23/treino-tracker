@@ -1,6 +1,10 @@
 import {
   db,
+  defaultProgramName,
+  type Cycle,
   type Exercise,
+  type Flag,
+  type Program,
   type Session,
   type SetBlock,
   type SetLog,
@@ -11,7 +15,7 @@ import { newId } from '../lib/id'
 import { blobToDataUrl, dataUrlToBlob } from '../lib/image'
 
 const FORMAT = 'treino-tracker-backup'
-const VERSION = 3
+const VERSION = 4
 
 /** No arquivo a foto vira data URL: Blob não sobrevive a JSON. */
 type ExerciseDoc = Omit<Exercise, 'photo'> & { photo?: string }
@@ -21,6 +25,7 @@ export interface Backup {
   version: number
   exportedAt: string
   exercises: ExerciseDoc[]
+  programs: Program[]
   workouts: Workout[]
   workoutItems: WorkoutItem[]
   setBlocks: SetBlock[]
@@ -29,9 +34,10 @@ export interface Backup {
 }
 
 export async function exportBackup(includePhotos = true): Promise<Backup> {
-  const [rawExercises, workouts, workoutItems, setBlocks, sessions, setLogs] =
+  const [rawExercises, programs, workouts, workoutItems, setBlocks, sessions, setLogs] =
     await Promise.all([
       db.exercises.toArray(),
+      db.programs.toArray(),
       db.workouts.toArray(),
       db.workoutItems.toArray(),
       db.setBlocks.toArray(),
@@ -51,6 +57,7 @@ export async function exportBackup(includePhotos = true): Promise<Backup> {
     version: VERSION,
     exportedAt: new Date().toISOString(),
     exercises,
+    programs,
     workouts,
     workoutItems,
     setBlocks,
@@ -111,6 +118,71 @@ function migrateToV2(backup: Backup): Backup {
   }
 }
 
+/** Backup da v3: treinos soltos, cada um com a sua validade. */
+type LegacyWorkoutDoc = Workout & { cycle?: Cycle; cycleStartedAt?: number }
+
+/**
+ * Cria o programa que faltava e adota os treinos do arquivo, subindo a validade
+ * deles — a mesma transformação que a migração v3 do banco faz. Com ciclos
+ * divergentes o programa nasce sem validade: não há como eleger qual vence.
+ */
+function migrateToV4(backup: Backup): Backup {
+  if ((backup.version ?? 1) >= 4 && Array.isArray(backup.programs)) return backup
+
+  const legacy = backup.workouts as LegacyWorkoutDoc[]
+  const comCiclo = legacy.filter((w) => w.cycle)
+  const distintos = new Set(comCiclo.map((w) => JSON.stringify(w.cycle)))
+  const herdado = distintos.size === 1 ? comCiclo[0] : undefined
+
+  const now = Date.now()
+  const program: Program = {
+    id: newId(),
+    // Marcado como importado: mesclar um plano antigo dentro de um app que já
+    // tem programas criaria dois "Treino de agosto" indistinguíveis na lista.
+    name: `${defaultProgramName(now)} (importado)`,
+    order: 0,
+    archived: 0,
+    createdAt: now,
+    cycle: herdado?.cycle,
+    cycleStartedAt: herdado
+      ? Math.min(...comCiclo.map((w) => w.cycleStartedAt ?? w.createdAt))
+      : undefined,
+  }
+
+  return {
+    ...backup,
+    version: VERSION,
+    programs: [program],
+    workouts: legacy.map(({ cycle: _cycle, cycleStartedAt: _started, ...workout }) => ({
+      ...workout,
+      programId: workout.programId || program.id,
+    })),
+  }
+}
+
+/**
+ * Deixa exatamente um programa ativo. O arquivo traz o seu próprio ativo e
+ * colide com o daqui — e com dois ativos a aba Treinos escolheria um por
+ * sorteio. `preferId` é quem estava ativo antes: importar um plano não deve
+ * trocar a bateria que a pessoa está treinando.
+ */
+async function normalizeActiveProgram(preferId?: string): Promise<void> {
+  const programs = await db.programs.orderBy('order').toArray()
+  if (programs.length === 0) return
+
+  const escolhido =
+    programs.find((p) => p.id === preferId) ??
+    programs.find((p) => p.archived === 0) ??
+    programs[0]!
+
+  for (const program of programs) {
+    const archived: Flag = program.id === escolhido.id ? 0 : 1
+    if (program.archived !== archived) {
+      await db.programs.update(program.id, { archived })
+    }
+  }
+}
+
 export type ImportMode = 'merge' | 'replace'
 
 /** Compara nomes ignorando maiúsculas, acentos e espaços sobrando. */
@@ -145,7 +217,7 @@ function parseBackup(raw: string): Backup {
   if ((parsed.version ?? 1) > VERSION) {
     throw new Error('Backup gerado por uma versão mais nova do app.')
   }
-  return migrateToV2(parsed)
+  return migrateToV4(migrateToV2(parsed))
 }
 
 /**
@@ -159,7 +231,15 @@ export async function mergeBackup(raw: string): Promise<void> {
 
   await db.transaction(
     'rw',
-    [db.exercises, db.workouts, db.workoutItems, db.setBlocks, db.sessions, db.setLogs],
+    [
+      db.exercises,
+      db.programs,
+      db.workouts,
+      db.workoutItems,
+      db.setBlocks,
+      db.sessions,
+      db.setLogs,
+    ],
     async () => {
       const existentes = await db.exercises.toArray()
       const porNome = new Map(existentes.map((e) => [normalizeName(e.name), e]))
@@ -196,6 +276,10 @@ export async function mergeBackup(raw: string): Promise<void> {
 
       const resolver = (id: string) => mapaExercicios.get(id) ?? id
 
+      // Guardado antes do bulkPut: o arquivo traz o ativo dele junto.
+      const ativoAntes = await db.programs.filter((p) => p.archived === 0).first()
+
+      await db.programs.bulkPut(backup.programs)
       await db.workouts.bulkPut(backup.workouts)
 
       // Para cada treino do arquivo, os filhos passam a ser exatamente os do
@@ -239,6 +323,8 @@ export async function mergeBackup(raw: string): Promise<void> {
           backup.setLogs.map((log) => ({ ...log, exerciseId: resolver(log.exerciseId) })),
         )
       }
+
+      await normalizeActiveProgram(ativoAntes?.id)
     },
   )
 }
@@ -253,10 +339,19 @@ export async function importBackup(raw: string): Promise<void> {
 
   await db.transaction(
     'rw',
-    [db.exercises, db.workouts, db.workoutItems, db.setBlocks, db.sessions, db.setLogs],
+    [
+      db.exercises,
+      db.programs,
+      db.workouts,
+      db.workoutItems,
+      db.setBlocks,
+      db.sessions,
+      db.setLogs,
+    ],
     async () => {
       await Promise.all([
         db.exercises.clear(),
+        db.programs.clear(),
         db.workouts.clear(),
         db.workoutItems.clear(),
         db.setBlocks.clear(),
@@ -265,12 +360,15 @@ export async function importBackup(raw: string): Promise<void> {
       ])
       await Promise.all([
         db.exercises.bulkAdd(exercises),
+        db.programs.bulkAdd(backup.programs),
         db.workouts.bulkAdd(backup.workouts),
         db.workoutItems.bulkAdd(backup.workoutItems),
         db.setBlocks.bulkAdd(backup.setBlocks),
         db.sessions.bulkAdd(backup.sessions),
         db.setLogs.bulkAdd(backup.setLogs),
       ])
+
+      await normalizeActiveProgram()
     },
   )
 }
@@ -278,10 +376,19 @@ export async function importBackup(raw: string): Promise<void> {
 export async function wipeAll(): Promise<void> {
   await db.transaction(
     'rw',
-    [db.exercises, db.workouts, db.workoutItems, db.setBlocks, db.sessions, db.setLogs],
+    [
+      db.exercises,
+      db.programs,
+      db.workouts,
+      db.workoutItems,
+      db.setBlocks,
+      db.sessions,
+      db.setLogs,
+    ],
     async () => {
       await Promise.all([
         db.exercises.clear(),
+        db.programs.clear(),
         db.workouts.clear(),
         db.workoutItems.clear(),
         db.setBlocks.clear(),
