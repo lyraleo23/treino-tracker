@@ -1,5 +1,12 @@
 import Dexie from 'dexie'
-import { db, type SetBlock, type SetLog, type Target } from './db'
+import {
+  db,
+  DEFAULT_LADDER_RATIOS,
+  type LadderRatios,
+  type SetBlock,
+  type SetLog,
+  type Target,
+} from './db'
 import { anchorWeight, blockRole, isAnchorBlock, ladderIsBroken } from '../lib/ladder'
 
 /**
@@ -405,6 +412,11 @@ export async function getExerciseHistory(exerciseId: string): Promise<ExercisePo
   }
 
   return [...bySession.values()].sort((a, b) => a.date - b.date)
+}
+
+/** Proporções da escada configuradas; sem configuração salva, os padrões. */
+export async function getLadderRatios(): Promise<LadderRatios> {
+  return (await db.settings.get('app'))?.ladder ?? DEFAULT_LADDER_RATIOS
 }
 
 /** Sessão iniciada e ainda não finalizada, se houver. */

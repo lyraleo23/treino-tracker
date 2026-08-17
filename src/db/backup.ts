@@ -6,6 +6,7 @@ import {
   type Flag,
   type Program,
   type Session,
+  type Settings,
   type SetBlock,
   type SetLog,
   type Workout,
@@ -15,7 +16,7 @@ import { newId } from '../lib/id'
 import { blobToDataUrl, dataUrlToBlob } from '../lib/image'
 
 const FORMAT = 'treino-tracker-backup'
-const VERSION = 4
+const VERSION = 5
 
 /** No arquivo a foto vira data URL: Blob não sobrevive a JSON. */
 type ExerciseDoc = Omit<Exercise, 'photo'> & { photo?: string }
@@ -25,6 +26,8 @@ export interface Backup {
   version: number
   exportedAt: string
   exercises: ExerciseDoc[]
+  /** Ausente nos arquivos anteriores à v5; quem lê cai nos padrões. */
+  settings?: Settings[]
   programs: Program[]
   workouts: Workout[]
   workoutItems: WorkoutItem[]
@@ -34,9 +37,18 @@ export interface Backup {
 }
 
 export async function exportBackup(includePhotos = true): Promise<Backup> {
-  const [rawExercises, programs, workouts, workoutItems, setBlocks, sessions, setLogs] =
-    await Promise.all([
+  const [
+    rawExercises,
+    settings,
+    programs,
+    workouts,
+    workoutItems,
+    setBlocks,
+    sessions,
+    setLogs,
+  ] = await Promise.all([
       db.exercises.toArray(),
+      db.settings.toArray(),
       db.programs.toArray(),
       db.workouts.toArray(),
       db.workoutItems.toArray(),
@@ -57,6 +69,7 @@ export async function exportBackup(includePhotos = true): Promise<Backup> {
     version: VERSION,
     exportedAt: new Date().toISOString(),
     exercises,
+    settings,
     programs,
     workouts,
     workoutItems,
@@ -233,6 +246,7 @@ export async function mergeBackup(raw: string): Promise<void> {
     'rw',
     [
       db.exercises,
+      db.settings,
       db.programs,
       db.workouts,
       db.workoutItems,
@@ -279,6 +293,7 @@ export async function mergeBackup(raw: string): Promise<void> {
       // Guardado antes do bulkPut: o arquivo traz o ativo dele junto.
       const ativoAntes = await db.programs.filter((p) => p.archived === 0).first()
 
+      await db.settings.bulkPut(backup.settings ?? [])
       await db.programs.bulkPut(backup.programs)
       await db.workouts.bulkPut(backup.workouts)
 
@@ -341,6 +356,7 @@ export async function importBackup(raw: string): Promise<void> {
     'rw',
     [
       db.exercises,
+      db.settings,
       db.programs,
       db.workouts,
       db.workoutItems,
@@ -351,6 +367,7 @@ export async function importBackup(raw: string): Promise<void> {
     async () => {
       await Promise.all([
         db.exercises.clear(),
+        db.settings.clear(),
         db.programs.clear(),
         db.workouts.clear(),
         db.workoutItems.clear(),
@@ -360,6 +377,7 @@ export async function importBackup(raw: string): Promise<void> {
       ])
       await Promise.all([
         db.exercises.bulkAdd(exercises),
+        db.settings.bulkAdd(backup.settings ?? []),
         db.programs.bulkAdd(backup.programs),
         db.workouts.bulkAdd(backup.workouts),
         db.workoutItems.bulkAdd(backup.workoutItems),
@@ -378,6 +396,7 @@ export async function wipeAll(): Promise<void> {
     'rw',
     [
       db.exercises,
+      db.settings,
       db.programs,
       db.workouts,
       db.workoutItems,
@@ -388,6 +407,7 @@ export async function wipeAll(): Promise<void> {
     async () => {
       await Promise.all([
         db.exercises.clear(),
+        db.settings.clear(),
         db.programs.clear(),
         db.workouts.clear(),
         db.workoutItems.clear(),

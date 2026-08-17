@@ -6,6 +6,7 @@ import {
   type Exercise,
   type ExerciseKind,
   type Flag,
+  type LadderRatios,
   type Program,
   type Session,
   type SetBlock,
@@ -124,6 +125,13 @@ export async function deleteExercise(id: string): Promise<void> {
       await db.exercises.delete(id)
     },
   )
+}
+
+// --- Configuração -------------------------------------------------------
+
+/** Grava as proporções da escada; a linha é criada no primeiro salvamento. */
+export async function saveLadderRatios(ladder: LadderRatios): Promise<void> {
+  await db.settings.put({ id: 'app', ladder })
 }
 
 // --- Programas ----------------------------------------------------------

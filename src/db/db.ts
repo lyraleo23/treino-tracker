@@ -26,6 +26,31 @@ export const DEFAULT_CARDIO_FIELDS: CardioField[] = ['seconds', 'speed', 'inclin
 /** Incremento de carga padrão, em kg. */
 export const DEFAULT_WEIGHT_STEP = 2.5
 
+/**
+ * Proporções da escada de carga, todas relativas ao working set (100%). Os
+ * feeders são interpolados entre `feederMin` e `feederMax`.
+ */
+export interface LadderRatios {
+  warmup: number
+  feederMin: number
+  feederMax: number
+}
+
+export const DEFAULT_LADDER_RATIOS: LadderRatios = {
+  warmup: 0.5,
+  feederMin: 0.7,
+  feederMax: 0.85,
+}
+
+/**
+ * Linha única de configuração do app — `id` é sempre 'app'. Quando ela não
+ * existe, quem lê cai nos padrões, então não há o que semear.
+ */
+export interface Settings {
+  id: 'app'
+  ladder: LadderRatios
+}
+
 /** Flag booleana persistida como 0/1 porque o IndexedDB não indexa boolean. */
 export type Flag = 0 | 1
 
@@ -203,6 +228,7 @@ export function defaultProgramName(at = Date.now()): string {
 
 class TreinoDB extends Dexie {
   exercises!: Table<Exercise, string>
+  settings!: Table<Settings, string>
   programs!: Table<Program, string>
   workouts!: Table<Workout, string>
   workoutItems!: Table<WorkoutItem, string>
@@ -309,6 +335,10 @@ class TreinoDB extends Dexie {
             delete workout.cycleStartedAt
           })
       })
+
+    // Sem `.upgrade()`: não há dado a transformar. A tabela nasce vazia e a
+    // leitura cai nos padrões enquanto ninguém salvar nada.
+    this.version(4).stores({ settings: 'id' })
   }
 }
 

@@ -21,6 +21,7 @@ import {
 } from '../db/actions'
 import {
   getHistoryForBlocks,
+  getLadderRatios,
   getLastSetsForExercises,
   getPreviousExecutions,
   getProgressionSuggestion,
@@ -212,6 +213,7 @@ export function SessionPage() {
       lastByBlock,
       lastByExercise,
       suggestions,
+      ratios: await getLadderRatios(),
     }
   }, [sessionId])
 
@@ -290,6 +292,7 @@ export function SessionPage() {
     lastByBlock,
     lastByExercise,
     suggestions,
+    ratios,
   } = data
 
   const totalPlanned = rows.reduce(
@@ -351,7 +354,7 @@ export function SessionPage() {
     // escada) cai no passo do exercício.
     const step = Math.abs(delta) || stepOf(row)
     const anchor = suggestion.anchor + delta
-    return buildLadder(row.blocks, suggestion.previous, anchor, step)
+    return buildLadder(row.blocks, suggestion.previous, anchor, step, ratios)
   }
 
   /** Escreve a escada nos campos da sessão. Nada vai para o banco aqui. */

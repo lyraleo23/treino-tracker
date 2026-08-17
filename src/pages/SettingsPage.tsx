@@ -1,10 +1,22 @@
 import { useRef, useState } from 'react'
 import { useLiveQuery } from 'dexie-react-hooks'
-import { db } from '../db/db'
+import { db, DEFAULT_LADDER_RATIOS } from '../db/db'
 import { exportBackup, importBackup, mergeBackup, wipeAll, type ImportMode } from '../db/backup'
+import { saveLadderRatios } from '../db/actions'
+import { getLadderRatios } from '../db/queries'
 import { seedIfEmpty } from '../db/seed'
 import { PageHeader } from '../components/PageHeader'
 import { ConfirmDialog } from '../components/Modal'
+import { parseNumber } from '../lib/format'
+
+/** Os três percentuais da escada, na ordem em que se lê a progressão. */
+const LADDER_FIELDS = [
+  { key: 'warmup', label: 'Aquecimento' },
+  { key: 'feederMin', label: 'Feeder mín.' },
+  { key: 'feederMax', label: 'Feeder máx.' },
+] as const
+
+type LadderForm = Record<(typeof LADDER_FIELDS)[number]['key'], string>
 
 export function SettingsPage() {
   const fileInput = useRef<HTMLInputElement>(null)
@@ -14,6 +26,58 @@ export function SettingsPage() {
   const [mode, setMode] = useState<ImportMode>('merge')
   const [includePhotos, setIncludePhotos] = useState(true)
   const [pendingFile, setPendingFile] = useState<File | null>(null)
+  /** `null` espelha o banco; preenchido, é o que está sendo editado. */
+  const [ladderForm, setLadderForm] = useState<LadderForm | null>(null)
+
+  const savedRatios = useLiveQuery(getLadderRatios, [])
+
+  // A razão é guardada como 0,85; a tela fala em 85%. A conversão vive só aqui.
+  const toPercent = (value: number) => String(Math.round(value * 1000) / 10)
+
+  const ladder: LadderForm = ladderForm ?? {
+    warmup: toPercent(savedRatios?.warmup ?? DEFAULT_LADDER_RATIOS.warmup),
+    feederMin: toPercent(savedRatios?.feederMin ?? DEFAULT_LADDER_RATIOS.feederMin),
+    feederMax: toPercent(savedRatios?.feederMax ?? DEFAULT_LADDER_RATIOS.feederMax),
+  }
+
+  const parsedLadder = {
+    warmup: parseNumber(ladder.warmup),
+    feederMin: parseNumber(ladder.feederMin),
+    feederMax: parseNumber(ladder.feederMax),
+  }
+
+  const naFaixa = Object.values(parsedLadder).every(
+    (value) => value !== undefined && value >= 1 && value <= 99,
+  )
+
+  const ladderError = !naFaixa
+    ? 'Cada percentual precisa ficar entre 1% e 99%. Feeder em 100% alcançaria o working set.'
+    : parsedLadder.feederMin! > parsedLadder.feederMax!
+      ? 'O feeder mínimo não pode passar do máximo — a escada andaria para trás.'
+      : null
+
+  // Aquecimento acima do feeder é esquisito, mas nada no app se apoia nele.
+  const ladderWarning =
+    !ladderError && parsedLadder.warmup! > parsedLadder.feederMin!
+      ? 'O aquecimento está mais pesado que o feeder mínimo. Nada quebra, mas a escada fica ao contrário.'
+      : null
+
+  async function handleSaveRatios() {
+    if (ladderError) return
+    await saveLadderRatios({
+      warmup: parsedLadder.warmup! / 100,
+      feederMin: parsedLadder.feederMin! / 100,
+      feederMax: parsedLadder.feederMax! / 100,
+    })
+    setLadderForm(null)
+    setMessage('Distribuição de carga salva.')
+  }
+
+  async function handleResetRatios() {
+    await saveLadderRatios(DEFAULT_LADDER_RATIOS)
+    setLadderForm(null)
+    setMessage('Distribuição de carga de volta ao padrão.')
+  }
 
   const counts = useLiveQuery(async () => {
     const exercises = await db.exercises.toArray()
@@ -92,6 +156,57 @@ export function SettingsPage() {
           {counts?.sets ?? 0} séries registradas. Tudo fica só neste aparelho — nada é
           enviado para servidor nenhum.
         </p>
+
+        <h2 className="section-title">Distribuição de carga</h2>
+        <p className="hint" style={{ marginTop: 0 }}>
+          Percentuais do working set usados na sugestão de carga. Com vários feeders,
+          eles são distribuídos em passos iguais entre o mínimo e o máximo.
+        </p>
+        <div
+          style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 8 }}
+        >
+          {LADDER_FIELDS.map(({ key, label }) => (
+            <div className="field" key={key}>
+              <label className="field__label" htmlFor={`ladder-${key}`}>
+                {label}
+              </label>
+              <input
+                id={`ladder-${key}`}
+                className="input input--center"
+                inputMode="decimal"
+                value={ladder[key]}
+                onChange={(event) =>
+                  setLadderForm({ ...ladder, [key]: event.target.value })
+                }
+              />
+            </div>
+          ))}
+        </div>
+
+        <p className="hint">
+          {ladderError ??
+            `Com working a 100 kg e 2 feeders: aquecimento ${ladder.warmup}% · feeders ${ladder.feederMin}% e ${ladder.feederMax}% · working 100%.`}
+        </p>
+        {ladderWarning && (
+          <p className="hint" style={{ color: 'var(--warn)' }}>
+            {ladderWarning}
+          </p>
+        )}
+
+        <div className="row" style={{ gap: 8 }}>
+          <button
+            type="button"
+            className="btn btn--primary"
+            style={{ flex: 1 }}
+            disabled={!!ladderError}
+            onClick={() => void handleSaveRatios()}
+          >
+            Salvar
+          </button>
+          <button type="button" className="btn" onClick={() => void handleResetRatios()}>
+            Voltar ao padrão
+          </button>
+        </div>
 
         <h2 className="section-title">Backup</h2>
         <div className="stack">

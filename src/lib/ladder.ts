@@ -1,19 +1,25 @@
-import { DEFAULT_WEIGHT_STEP, type BlockKind, type SetBlock } from '../db/db'
+import {
+  DEFAULT_LADDER_RATIOS,
+  DEFAULT_WEIGHT_STEP,
+  type BlockKind,
+  type LadderRatios,
+  type SetBlock,
+} from '../db/db'
 
 /**
  * Os blocos de um exercício formam uma escada ancorada no working set: o
  * working é a referência (100%) e os que vêm antes são proporções dele. Feeder
  * serve para preparar o padrão de movimento com carga menor, então precisa
  * subir em direção ao working, nunca alcançá-lo.
+ *
+ * As proporções são configuráveis (tela de Ajustes) e chegam por parâmetro —
+ * é o que mantém este módulo puro, sem saber que existe banco.
  */
-const FEEDER_MIN = 0.7
-const FEEDER_MAX = 0.85
-const WARMUP_RATIO = 0.5
 
 /** Proporção de cada feeder quando há N deles: 2 feeders → 0,70 e 0,85. */
-function feederRatio(index: number, total: number): number {
-  if (total <= 1) return FEEDER_MAX
-  return FEEDER_MIN + ((FEEDER_MAX - FEEDER_MIN) * index) / (total - 1)
+function feederRatio(index: number, total: number, ratios: LadderRatios): number {
+  if (total <= 1) return ratios.feederMax
+  return ratios.feederMin + ((ratios.feederMax - ratios.feederMin) * index) / (total - 1)
 }
 
 export function isAnchorBlock(kind: BlockKind): boolean {
@@ -59,6 +65,7 @@ export function buildLadder(
   previous: Map<string, number | undefined>,
   anchor: number,
   step: number,
+  ratios: LadderRatios = DEFAULT_LADDER_RATIOS,
 ): LadderEntry[] {
   const feeders = blocks.filter((block) => block.kind === 'feeder')
   const previousAnchor = anchorWeight(blocks, previous)
@@ -71,11 +78,15 @@ export function buildLadder(
 
     if (block.kind === 'feeder') {
       const index = feeders.findIndex((other) => other.id === block.id)
-      return { block, from, to: roundToStep(anchor * feederRatio(index, feeders.length), step) }
+      return {
+        block,
+        from,
+        to: roundToStep(anchor * feederRatio(index, feeders.length, ratios), step),
+      }
     }
 
     if (block.kind === 'warmup') {
-      return { block, from, to: roundToStep(anchor * WARMUP_RATIO, step) }
+      return { block, from, to: roundToStep(anchor * ratios.warmup, step) }
     }
 
     // Demais tipos: mantêm a própria carga, deslocada junto com o working.
