@@ -9,11 +9,15 @@ import { PageHeader } from '../components/PageHeader'
 import { ConfirmDialog } from '../components/Modal'
 import { parseNumber } from '../lib/format'
 
-/** Os três percentuais da escada, na ordem em que se lê a progressão. */
+/**
+ * Os três percentuais da escada, na ordem em que se lê a progressão. A unidade
+ * vai no rótulo, como o app já faz nos campos de cardio ("Inclinação (%)"):
+ * sem ela, `50` num campo de treino se lê como quilo.
+ */
 const LADDER_FIELDS = [
-  { key: 'warmup', label: 'Aquecimento' },
-  { key: 'feederMin', label: 'Feeder mín.' },
-  { key: 'feederMax', label: 'Feeder máx.' },
+  { key: 'warmup', label: 'Aquecimento (%)' },
+  { key: 'feederMin', label: 'Feeder mín. (%)' },
+  { key: 'feederMax', label: 'Feeder máx. (%)' },
 ] as const
 
 type LadderForm = Record<(typeof LADDER_FIELDS)[number]['key'], string>
@@ -162,8 +166,15 @@ export function SettingsPage() {
           Percentuais do working set usados na sugestão de carga. Com vários feeders,
           eles são distribuídos em passos iguais entre o mínimo e o máximo.
         </p>
+        {/* alignItems end mantém os campos alinhados pela base quando um rótulo
+            quebra em duas linhas e os outros não. */}
         <div
-          style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 8 }}
+          style={{
+            display: 'grid',
+            gridTemplateColumns: 'repeat(3, 1fr)',
+            alignItems: 'end',
+            gap: 8,
+          }}
         >
           {LADDER_FIELDS.map(({ key, label }) => (
             <div className="field" key={key}>
@@ -207,6 +218,18 @@ export function SettingsPage() {
             Voltar ao padrão
           </button>
         </div>
+
+        {/* Marcadores de lugar: qualquer descrição aqui viraria compromisso de
+            design que ainda não foi feito. */}
+        <h2 className="section-title">Nutrição</h2>
+        <p className="hint" style={{ marginTop: 0 }}>
+          Em breve.
+        </p>
+
+        <h2 className="section-title">Hidratação</h2>
+        <p className="hint" style={{ marginTop: 0 }}>
+          Em breve.
+        </p>
 
         <h2 className="section-title">Backup</h2>
         <div className="stack">
