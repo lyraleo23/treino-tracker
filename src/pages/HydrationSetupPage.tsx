@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { useLiveQuery } from 'dexie-react-hooks'
-import { db, type Drink } from '../db/db'
+import { db, type Container, type Drink, type DrinkShortcut } from '../db/db'
 import {
   addShortcut,
   deleteContainer,
@@ -24,6 +24,7 @@ export function HydrationSetupPage() {
   const [drinkForm, setDrinkForm] = useState<DrinkForm | null>(null)
   const [containerForm, setContainerForm] = useState<ContainerForm | null>(null)
   const [pairing, setPairing] = useState<Drink | null>(null)
+  const [creatingShortcut, setCreatingShortcut] = useState(false)
 
   const data = useLiveQuery(async () => ({
     goalMl: await getHydrationGoal(),
@@ -178,9 +179,8 @@ export function HydrationSetupPage() {
 
         <h2 className="section-title">Atalhos</h2>
         {shortcuts.length === 0 ? (
-          <p className="hint">
-            Nenhum atalho. Use o "+" ao lado de uma bebida para combiná-la com um
-            recipiente.
+          <p className="hint" style={{ marginTop: 0 }}>
+            Nenhum atalho ainda. Crie um abaixo para registrar com um toque.
           </p>
         ) : (
           <div className="list">
@@ -209,6 +209,15 @@ export function HydrationSetupPage() {
             })}
           </div>
         )}
+        <button
+          type="button"
+          className="btn btn--block"
+          style={{ marginTop: 8 }}
+          disabled={drinks.length === 0 || containers.length === 0}
+          onClick={() => setCreatingShortcut(true)}
+        >
+          <PlusIcon width={16} height={16} /> Novo atalho
+        </button>
       </div>
 
       {drinkForm && (
@@ -224,6 +233,15 @@ export function HydrationSetupPage() {
           form={containerForm}
           onChange={setContainerForm}
           onClose={() => setContainerForm(null)}
+        />
+      )}
+
+      {creatingShortcut && (
+        <ShortcutFormModal
+          drinks={drinks}
+          containers={containers}
+          existing={shortcuts}
+          onClose={() => setCreatingShortcut(false)}
         />
       )}
 
@@ -325,6 +343,97 @@ function DrinkFormModal({
             {invalido ? 'Use um valor entre 1% e 100%.' : '100% conta o volume inteiro.'}
           </span>
         </div>
+      </div>
+    </Modal>
+  )
+}
+
+/**
+ * Ponto de entrada explícito para criar atalhos. Sem ele, a única forma era o
+ * ícone "+" ao lado de cada bebida — e a dica que explicava isso só aparecia
+ * com a lista de atalhos vazia, o que nunca acontece de fato porque o catálogo
+ * já nasce com atalhos semeados.
+ */
+function ShortcutFormModal({
+  drinks,
+  containers,
+  existing,
+  onClose,
+}: {
+  drinks: Drink[]
+  containers: Container[]
+  existing: DrinkShortcut[]
+  onClose: () => void
+}) {
+  const [drinkId, setDrinkId] = useState<string | null>(null)
+  const [containerId, setContainerId] = useState<string | null>(null)
+
+  const jaExiste =
+    !!drinkId &&
+    !!containerId &&
+    existing.some((s) => s.drinkId === drinkId && s.containerId === containerId)
+
+  const invalido = !drinkId || !containerId || jaExiste
+
+  return (
+    <Modal
+      title="Novo atalho"
+      onClose={onClose}
+      actions={
+        <>
+          <button type="button" className="btn btn--ghost" onClick={onClose}>
+            Cancelar
+          </button>
+          <button
+            type="button"
+            className="btn btn--primary"
+            disabled={invalido}
+            onClick={async () => {
+              await addShortcut(drinkId!, containerId!)
+              onClose()
+            }}
+          >
+            Salvar
+          </button>
+        </>
+      }
+    >
+      <div className="stack">
+        <div className="field">
+          <span className="field__label">Bebida</span>
+          <div className="chip-grid">
+            {drinks.map((drink) => (
+              <button
+                key={drink.id}
+                type="button"
+                className={drink.id === drinkId ? 'chip-option is-active' : 'chip-option'}
+                onClick={() => setDrinkId(drink.id)}
+              >
+                {drink.name}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        <div className="field">
+          <span className="field__label">Recipiente</span>
+          <div className="chip-grid">
+            {containers.map((container) => (
+              <button
+                key={container.id}
+                type="button"
+                className={
+                  container.id === containerId ? 'chip-option is-active' : 'chip-option'
+                }
+                onClick={() => setContainerId(container.id)}
+              >
+                {container.name} · {container.ml} ml
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {jaExiste && <p className="hint">Esse atalho já existe.</p>}
       </div>
     </Modal>
   )
