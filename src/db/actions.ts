@@ -1,6 +1,8 @@
 import Dexie from 'dexie'
 import {
   db,
+  DEFAULT_HYDRATION,
+  DEFAULT_LADDER_RATIOS,
   type CardioField,
   type Cycle,
   type Exercise,
@@ -15,6 +17,7 @@ import {
   type WorkoutItem,
 } from './db'
 import { newId } from '../lib/id'
+import { startOfDay } from '../lib/format'
 
 // --- Exercícios ---------------------------------------------------------
 
@@ -131,7 +134,147 @@ export async function deleteExercise(id: string): Promise<void> {
 
 /** Grava as proporções da escada; a linha é criada no primeiro salvamento. */
 export async function saveLadderRatios(ladder: LadderRatios): Promise<void> {
-  await db.settings.put({ id: 'app', ladder })
+  const current = await db.settings.get('app')
+  await db.settings.put({ ...current, id: 'app', ladder })
+}
+
+export async function saveHydrationGoal(goalMl: number): Promise<void> {
+  const current = await db.settings.get('app')
+  await db.settings.put({
+    id: 'app',
+    ladder: current?.ladder ?? DEFAULT_LADDER_RATIOS,
+    hydration: { goalMl: Math.max(1, Math.round(goalMl)) },
+  })
+}
+
+// --- Hidratação ---------------------------------------------------------
+
+/** O quanto do volume conta para a meta, com a bebida sumida valendo integral. */
+function countedFor(ml: number, factor: number | undefined): number {
+  return Math.round(ml * (factor ?? 1))
+}
+
+/**
+ * Registra um consumo. Congela duas coisas: o `countedMl` pelo fator vigente e
+ * a meta do dia no `HydrationDay`. Sem isso, recalibrar um fator ou subir a
+ * meta reescreveria dias já julgados.
+ */
+export async function logDrink(data: { drinkId: string; ml: number; at?: number }): Promise<void> {
+  const at = data.at ?? Date.now()
+  const day = startOfDay(at)
+
+  await db.transaction('rw', [db.drinks, db.drinkLogs, db.hydrationDays, db.settings], async () => {
+    const drink = await db.drinks.get(data.drinkId)
+
+    if (!(await db.hydrationDays.get(day))) {
+      const settings = await db.settings.get('app')
+      await db.hydrationDays.add({
+        day,
+        goalMl: settings?.hydration?.goalMl ?? DEFAULT_HYDRATION.goalMl,
+      })
+    }
+
+    await db.drinkLogs.add({
+      id: newId(),
+      day,
+      at,
+      drinkId: data.drinkId,
+      ml: data.ml,
+      countedMl: countedFor(data.ml, drink?.factor),
+    })
+  })
+}
+
+/**
+ * Corrige um lançamento. Aqui o `countedMl` é recalculado com o fator **atual**
+ * — quem está editando quer justamente o valor de hoje, não o congelado.
+ */
+export async function updateDrinkLog(
+  id: string,
+  data: { drinkId: string; ml: number },
+): Promise<void> {
+  const drink = await db.drinks.get(data.drinkId)
+  await db.drinkLogs.update(id, {
+    drinkId: data.drinkId,
+    ml: data.ml,
+    countedMl: countedFor(data.ml, drink?.factor),
+  })
+}
+
+export async function deleteDrinkLog(id: string): Promise<void> {
+  await db.drinkLogs.delete(id)
+}
+
+export async function saveDrink(
+  data: { id?: string; name: string; factor: number },
+): Promise<void> {
+  if (data.id) {
+    await db.drinks.update(data.id, { name: data.name.trim(), factor: data.factor })
+    return
+  }
+
+  const last = await db.drinks.orderBy('order').last()
+  await db.drinks.add({
+    id: newId(),
+    name: data.name.trim(),
+    factor: data.factor,
+    order: (last?.order ?? -1) + 1,
+    archived: 0,
+    createdAt: Date.now(),
+  })
+}
+
+export async function saveContainer(
+  data: { id?: string; name: string; ml: number },
+): Promise<void> {
+  if (data.id) {
+    await db.containers.update(data.id, { name: data.name.trim(), ml: data.ml })
+    return
+  }
+
+  const last = await db.containers.orderBy('order').last()
+  await db.containers.add({
+    id: newId(),
+    name: data.name.trim(),
+    ml: data.ml,
+    order: (last?.order ?? -1) + 1,
+    archived: 0,
+    createdAt: Date.now(),
+  })
+}
+
+/** Apaga bebida ou recipiente do catálogo; os lançamentos ficam no histórico. */
+export async function deleteDrink(id: string): Promise<void> {
+  await db.transaction('rw', [db.drinks, db.drinkShortcuts], async () => {
+    await db.drinkShortcuts.where('drinkId').equals(id).delete()
+    await db.drinks.delete(id)
+  })
+}
+
+export async function deleteContainer(id: string): Promise<void> {
+  await db.transaction('rw', [db.containers, db.drinkShortcuts], async () => {
+    await db.drinkShortcuts.where('containerId').equals(id).delete()
+    await db.containers.delete(id)
+  })
+}
+
+export async function addShortcut(drinkId: string, containerId: string): Promise<void> {
+  const existing = await db.drinkShortcuts
+    .filter((s) => s.drinkId === drinkId && s.containerId === containerId)
+    .first()
+  if (existing) return
+
+  const last = await db.drinkShortcuts.orderBy('order').last()
+  await db.drinkShortcuts.add({
+    id: newId(),
+    drinkId,
+    containerId,
+    order: (last?.order ?? -1) + 1,
+  })
+}
+
+export async function deleteShortcut(id: string): Promise<void> {
+  await db.drinkShortcuts.delete(id)
 }
 
 // --- Programas ----------------------------------------------------------

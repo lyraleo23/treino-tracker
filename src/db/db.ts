@@ -42,6 +42,12 @@ export const DEFAULT_LADDER_RATIOS: LadderRatios = {
   feederMax: 0.85,
 }
 
+export interface HydrationSettings {
+  goalMl: number
+}
+
+export const DEFAULT_HYDRATION: HydrationSettings = { goalMl: 2500 }
+
 /**
  * Linha única de configuração do app — `id` é sempre 'app'. Quando ela não
  * existe, quem lê cai nos padrões, então não há o que semear.
@@ -49,6 +55,66 @@ export const DEFAULT_LADDER_RATIOS: LadderRatios = {
 export interface Settings {
   id: 'app'
   ladder: LadderRatios
+  /** Ausente na linha gravada antes da hidratação existir. */
+  hydration?: HydrationSettings
+}
+
+// --- Hidratação ---------------------------------------------------------
+
+/** Uma bebida do catálogo: água, café, suco... */
+export interface Drink {
+  id: string
+  name: string
+  /**
+   * Quanto do volume conta para a meta: 1 é integral, 0,8 conta 80%. Mora no
+   * catálogo, e não no código, porque a evidência sobre o quanto cada bebida
+   * hidrata é frouxa — quem usa calibra conforme acredita.
+   */
+  factor: number
+  order: number
+  archived: Flag
+  createdAt: number
+}
+
+/** Um recipiente e o quanto ele leva. */
+export interface Container {
+  id: string
+  name: string
+  ml: number
+  order: number
+  archived: Flag
+  createdAt: number
+}
+
+/** Combinação salva: um toque registra esta bebida neste recipiente. */
+export interface DrinkShortcut {
+  id: string
+  drinkId: string
+  containerId: string
+  order: number
+}
+
+/** Um consumo registrado. */
+export interface DrinkLog {
+  id: string
+  /** Meia-noite local do dia: agrupa sem varrer a tabela inteira. */
+  day: number
+  at: number
+  drinkId: string
+  /** O que foi bebido. */
+  ml: number
+  /** O que contou para a meta, congelado pelo fator vigente no registro. */
+  countedMl: number
+}
+
+/**
+ * O dia, com a meta que valia nele. Congelar a meta (e o `countedMl` de cada
+ * registro) é o que impede o passado de ser reescrito: sem isso, subir a meta
+ * ou recalibrar um fator faria dias antes batidos passarem a falhados.
+ */
+export interface HydrationDay {
+  day: number
+  goalMl: number
 }
 
 /** Flag booleana persistida como 0/1 porque o IndexedDB não indexa boolean. */
@@ -229,6 +295,11 @@ export function defaultProgramName(at = Date.now()): string {
 class TreinoDB extends Dexie {
   exercises!: Table<Exercise, string>
   settings!: Table<Settings, string>
+  drinks!: Table<Drink, string>
+  containers!: Table<Container, string>
+  drinkShortcuts!: Table<DrinkShortcut, string>
+  drinkLogs!: Table<DrinkLog, string>
+  hydrationDays!: Table<HydrationDay, number>
   programs!: Table<Program, string>
   workouts!: Table<Workout, string>
   workoutItems!: Table<WorkoutItem, string>
@@ -339,6 +410,16 @@ class TreinoDB extends Dexie {
     // Sem `.upgrade()`: não há dado a transformar. A tabela nasce vazia e a
     // leitura cai nos padrões enquanto ninguém salvar nada.
     this.version(4).stores({ settings: 'id' })
+
+    // Idem: tabelas novas, sem dado antigo para converter. O catálogo é semeado
+    // pelo `ensureHydrationCatalog`, que roda em toda abertura do app.
+    this.version(5).stores({
+      drinks: 'id, order, archived',
+      containers: 'id, order, archived',
+      drinkShortcuts: 'id, order, drinkId, containerId',
+      drinkLogs: 'id, day, drinkId, [day+at]',
+      hydrationDays: 'day',
+    })
   }
 }
 

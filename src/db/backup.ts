@@ -1,9 +1,14 @@
 import {
   db,
   defaultProgramName,
+  type Container,
   type Cycle,
+  type Drink,
+  type DrinkLog,
+  type DrinkShortcut,
   type Exercise,
   type Flag,
+  type HydrationDay,
   type Program,
   type Session,
   type Settings,
@@ -16,7 +21,7 @@ import { newId } from '../lib/id'
 import { blobToDataUrl, dataUrlToBlob } from '../lib/image'
 
 const FORMAT = 'treino-tracker-backup'
-const VERSION = 5
+const VERSION = 6
 
 /** No arquivo a foto vira data URL: Blob não sobrevive a JSON. */
 type ExerciseDoc = Omit<Exercise, 'photo'> & { photo?: string }
@@ -28,6 +33,12 @@ export interface Backup {
   exercises: ExerciseDoc[]
   /** Ausente nos arquivos anteriores à v5; quem lê cai nos padrões. */
   settings?: Settings[]
+  /** Ausentes antes da v6; lidos com `?? []` para o arquivo antigo entrar. */
+  drinks?: Drink[]
+  containers?: Container[]
+  drinkShortcuts?: DrinkShortcut[]
+  drinkLogs?: DrinkLog[]
+  hydrationDays?: HydrationDay[]
   programs: Program[]
   workouts: Workout[]
   workoutItems: WorkoutItem[]
@@ -40,6 +51,11 @@ export async function exportBackup(includePhotos = true): Promise<Backup> {
   const [
     rawExercises,
     settings,
+    drinks,
+    containers,
+    drinkShortcuts,
+    drinkLogs,
+    hydrationDays,
     programs,
     workouts,
     workoutItems,
@@ -49,6 +65,11 @@ export async function exportBackup(includePhotos = true): Promise<Backup> {
   ] = await Promise.all([
       db.exercises.toArray(),
       db.settings.toArray(),
+      db.drinks.toArray(),
+      db.containers.toArray(),
+      db.drinkShortcuts.toArray(),
+      db.drinkLogs.toArray(),
+      db.hydrationDays.toArray(),
       db.programs.toArray(),
       db.workouts.toArray(),
       db.workoutItems.toArray(),
@@ -70,6 +91,11 @@ export async function exportBackup(includePhotos = true): Promise<Backup> {
     exportedAt: new Date().toISOString(),
     exercises,
     settings,
+    drinks,
+    containers,
+    drinkShortcuts,
+    drinkLogs,
+    hydrationDays,
     programs,
     workouts,
     workoutItems,
@@ -247,6 +273,11 @@ export async function mergeBackup(raw: string): Promise<void> {
     [
       db.exercises,
       db.settings,
+      db.drinks,
+      db.containers,
+      db.drinkShortcuts,
+      db.drinkLogs,
+      db.hydrationDays,
       db.programs,
       db.workouts,
       db.workoutItems,
@@ -294,6 +325,11 @@ export async function mergeBackup(raw: string): Promise<void> {
       const ativoAntes = await db.programs.filter((p) => p.archived === 0).first()
 
       await db.settings.bulkPut(backup.settings ?? [])
+      await db.drinks.bulkPut(backup.drinks ?? [])
+      await db.containers.bulkPut(backup.containers ?? [])
+      await db.drinkShortcuts.bulkPut(backup.drinkShortcuts ?? [])
+      await db.drinkLogs.bulkPut(backup.drinkLogs ?? [])
+      await db.hydrationDays.bulkPut(backup.hydrationDays ?? [])
       await db.programs.bulkPut(backup.programs)
       await db.workouts.bulkPut(backup.workouts)
 
@@ -357,6 +393,11 @@ export async function importBackup(raw: string): Promise<void> {
     [
       db.exercises,
       db.settings,
+      db.drinks,
+      db.containers,
+      db.drinkShortcuts,
+      db.drinkLogs,
+      db.hydrationDays,
       db.programs,
       db.workouts,
       db.workoutItems,
@@ -368,6 +409,11 @@ export async function importBackup(raw: string): Promise<void> {
       await Promise.all([
         db.exercises.clear(),
         db.settings.clear(),
+        db.drinks.clear(),
+        db.containers.clear(),
+        db.drinkShortcuts.clear(),
+        db.drinkLogs.clear(),
+        db.hydrationDays.clear(),
         db.programs.clear(),
         db.workouts.clear(),
         db.workoutItems.clear(),
@@ -378,6 +424,11 @@ export async function importBackup(raw: string): Promise<void> {
       await Promise.all([
         db.exercises.bulkAdd(exercises),
         db.settings.bulkAdd(backup.settings ?? []),
+        db.drinks.bulkAdd(backup.drinks ?? []),
+        db.containers.bulkAdd(backup.containers ?? []),
+        db.drinkShortcuts.bulkAdd(backup.drinkShortcuts ?? []),
+        db.drinkLogs.bulkAdd(backup.drinkLogs ?? []),
+        db.hydrationDays.bulkAdd(backup.hydrationDays ?? []),
         db.programs.bulkAdd(backup.programs),
         db.workouts.bulkAdd(backup.workouts),
         db.workoutItems.bulkAdd(backup.workoutItems),
@@ -397,6 +448,11 @@ export async function wipeAll(): Promise<void> {
     [
       db.exercises,
       db.settings,
+      db.drinks,
+      db.containers,
+      db.drinkShortcuts,
+      db.drinkLogs,
+      db.hydrationDays,
       db.programs,
       db.workouts,
       db.workoutItems,
@@ -408,6 +464,11 @@ export async function wipeAll(): Promise<void> {
       await Promise.all([
         db.exercises.clear(),
         db.settings.clear(),
+        db.drinks.clear(),
+        db.containers.clear(),
+        db.drinkShortcuts.clear(),
+        db.drinkLogs.clear(),
+        db.hydrationDays.clear(),
         db.programs.clear(),
         db.workouts.clear(),
         db.workoutItems.clear(),

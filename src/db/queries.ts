@@ -1,13 +1,16 @@
 import Dexie from 'dexie'
 import {
   db,
+  DEFAULT_HYDRATION,
   DEFAULT_LADDER_RATIOS,
+  type DrinkLog,
   type LadderRatios,
   type SetBlock,
   type SetLog,
   type Target,
 } from './db'
 import { anchorWeight, blockRole, isAnchorBlock, ladderIsBroken } from '../lib/ladder'
+import { startOfDay } from '../lib/format'
 
 /**
  * Última série registrada para o exercício, considerando todo o histórico —
@@ -417,6 +420,61 @@ export async function getExerciseHistory(exerciseId: string): Promise<ExercisePo
 /** Proporções da escada configuradas; sem configuração salva, os padrões. */
 export async function getLadderRatios(): Promise<LadderRatios> {
   return (await db.settings.get('app'))?.ladder ?? DEFAULT_LADDER_RATIOS
+}
+
+// --- Hidratação ---------------------------------------------------------
+
+/** Meta corrente; sem configuração salva, o padrão. */
+export async function getHydrationGoal(): Promise<number> {
+  return (await db.settings.get('app'))?.hydration?.goalMl ?? DEFAULT_HYDRATION.goalMl
+}
+
+export interface DayHydration {
+  day: number
+  logs: DrinkLog[]
+  goalMl: number
+  /** O que foi bebido, sem ajuste. */
+  drunkMl: number
+  /** O que contou para a meta, já com o fator de cada bebida. */
+  countedMl: number
+  hit: boolean
+  /** Alguma bebida do dia teve fator diferente de 1? */
+  hasFactor: boolean
+}
+
+/**
+ * O dia inteiro. A meta vem do registro do dia quando ele existe — é a que
+ * valia então; um dia ainda sem lançamento cai na meta corrente.
+ */
+export async function getDayHydration(day: number): Promise<DayHydration> {
+  const logs = await db.drinkLogs.where('day').equals(day).sortBy('at')
+  const saved = await db.hydrationDays.get(day)
+  const goalMl = saved?.goalMl ?? (await getHydrationGoal())
+
+  const drunkMl = logs.reduce((sum, log) => sum + log.ml, 0)
+  const countedMl = logs.reduce((sum, log) => sum + log.countedMl, 0)
+
+  return {
+    day,
+    logs,
+    goalMl,
+    drunkMl,
+    countedMl,
+    hit: countedMl >= goalMl,
+    hasFactor: logs.some((log) => log.countedMl !== log.ml),
+  }
+}
+
+/** Os últimos `days` dias, do mais antigo para o mais recente. */
+export async function getHydrationHistory(days: number): Promise<DayHydration[]> {
+  const hoje = startOfDay(Date.now())
+  const resultado: DayHydration[] = []
+
+  for (let i = days - 1; i >= 0; i -= 1) {
+    resultado.push(await getDayHydration(startOfDay(hoje - i * 86400000)))
+  }
+
+  return resultado
 }
 
 /** Sessão iniciada e ainda não finalizada, se houver. */

@@ -35,7 +35,7 @@ export function formatWeekday(ts: number): string {
 }
 
 /** Meia-noite do dia daquele instante — base para contar dias de calendário. */
-function startOfDay(ts: number): number {
+export function startOfDay(ts: number): number {
   const date = new Date(ts)
   date.setHours(0, 0, 0, 0)
   return date.getTime()
@@ -60,6 +60,16 @@ export function formatSeconds(total: number): string {
   if (seconds < 60) return `${seconds}s`
   const minutes = Math.floor(seconds / 60)
   return `${minutes}:${String(seconds % 60).padStart(2, '0')}`
+}
+
+/**
+ * "750 ml" · "2,5 l" — volume na escala em que ele se lê. Acima de um litro a
+ * tela viraria uma parede de números de quatro dígitos.
+ */
+export function formatMl(ml: number): string {
+  const value = Math.max(0, Math.round(ml))
+  if (value < 1000) return `${value} ml`
+  return `${formatNumber(value / 1000, 2)} l`
 }
 
 /**

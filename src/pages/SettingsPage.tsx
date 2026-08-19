@@ -219,14 +219,9 @@ export function SettingsPage() {
           </button>
         </div>
 
-        {/* Marcadores de lugar: qualquer descrição aqui viraria compromisso de
-            design que ainda não foi feito. */}
+        {/* Hidratação saiu daqui: virou a aba Saúde. Nutrição segue marcador
+            de lugar até ganhar forma. */}
         <h2 className="section-title">Nutrição</h2>
-        <p className="hint" style={{ marginTop: 0 }}>
-          Em breve.
-        </p>
-
-        <h2 className="section-title">Hidratação</h2>
         <p className="hint" style={{ marginTop: 0 }}>
           Em breve.
         </p>

@@ -3,6 +3,8 @@ import { HashRouter, Navigate, Route, Routes } from 'react-router-dom'
 import { AppShell } from './components/AppShell'
 import { WorkoutsPage } from './pages/WorkoutsPage'
 import { ProgramsPage } from './pages/ProgramsPage'
+import { HealthPage } from './pages/HealthPage'
+import { HydrationSetupPage } from './pages/HydrationSetupPage'
 import { WorkoutEditPage } from './pages/WorkoutEditPage'
 import { WorkoutItemPage } from './pages/WorkoutItemPage'
 import { SessionPage } from './pages/SessionPage'
@@ -34,6 +36,8 @@ export function App() {
           <Route path="/treinos/:workoutId/item/:itemId" element={<WorkoutItemPage />} />
           <Route path="/historico" element={<HistoryPage />} />
           <Route path="/historico/:sessionId" element={<SessionDetailPage />} />
+          <Route path="/saude" element={<HealthPage />} />
+          <Route path="/saude/hidratacao" element={<HydrationSetupPage />} />
           <Route path="/exercicios" element={<ExercisesPage />} />
           <Route
             path="/exercicios/:exerciseId"

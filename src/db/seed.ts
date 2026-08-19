@@ -78,6 +78,74 @@ export async function ensureProgram(): Promise<void> {
 }
 
 /**
+ * Bebidas de partida, com o fator de hidratação de cada uma.
+ *
+ * Os números são ponto de partida, não verdade científica: a evidência de que
+ * café desidrata é fraca — no Beverage Hydration Index (Maughan, 2016) café
+ * moderado ficou perto da água. Por isso são editáveis na tela de gestão.
+ */
+const SEED_DRINKS: [name: string, factor: number][] = [
+  ['Água', 1],
+  ['Chá', 1],
+  ['Suco', 0.9],
+  ['Refrigerante', 0.9],
+  ['Café', 0.8],
+]
+
+const SEED_CONTAINERS: [name: string, ml: number][] = [
+  ['Copo', 300],
+  ['Xícara', 150],
+  ['Garrafa', 500],
+]
+
+/** Pares que já nascem prontos, para a tela não abrir sem nenhum atalho. */
+const SEED_SHORTCUTS: [drink: string, container: string][] = [
+  ['Água', 'Copo'],
+  ['Água', 'Garrafa'],
+  ['Café', 'Xícara'],
+]
+
+/**
+ * Garante o catálogo de hidratação. Mesmo motivo do `ensureProgram`: a tabela
+ * nasce vazia na migração e numa instalação nova o `.upgrade()` nem roda, então
+ * sem isto a aba Saúde abriria sem nada em que tocar.
+ */
+export async function ensureHydrationCatalog(): Promise<void> {
+  if ((await db.drinks.count()) > 0) return
+
+  const now = Date.now()
+
+  const drinks = SEED_DRINKS.map(([name, factor], i) => ({
+    id: newId(),
+    name,
+    factor,
+    order: i,
+    archived: 0 as const,
+    createdAt: now + i,
+  }))
+
+  const containers = SEED_CONTAINERS.map(([name, ml], i) => ({
+    id: newId(),
+    name,
+    ml,
+    order: i,
+    archived: 0 as const,
+    createdAt: now + i,
+  }))
+
+  const shortcuts = SEED_SHORTCUTS.map(([drink, container], i) => ({
+    id: newId(),
+    drinkId: drinks.find((d) => d.name === drink)!.id,
+    containerId: containers.find((c) => c.name === container)!.id,
+    order: i,
+  }))
+
+  await db.drinks.bulkAdd(drinks)
+  await db.containers.bulkAdd(containers)
+  await db.drinkShortcuts.bulkAdd(shortcuts)
+}
+
+/**
  * Popula o catálogo na primeira execução. Se o usuário apagar tudo, o seed
  * roda de novo — o que é o comportamento desejado para um app sem cadastro.
  */
@@ -85,6 +153,7 @@ export async function seedIfEmpty(): Promise<void> {
   // Fora do early-return abaixo de propósito: o catálogo pode já existir e o
   // programa não, por exemplo depois de restaurar um backup antigo.
   await ensureProgram()
+  await ensureHydrationCatalog()
 
   const count = await db.exercises.count()
   if (count > 0) return

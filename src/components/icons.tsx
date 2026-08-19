@@ -24,6 +24,12 @@ function Icon({ children, ...props }: IconProps) {
   )
 }
 
+export const DropIcon = (props: IconProps) => (
+  <Icon {...props}>
+    <path d="M12 3.5c3.2 3.6 5.5 6.4 5.5 9.2a5.5 5.5 0 0 1-11 0c0-2.8 2.3-5.6 5.5-9.2Z" />
+  </Icon>
+)
+
 export const DumbbellIcon = (props: IconProps) => (
   <Icon {...props}>
     <path d="M4 9v6M7 7v10M17 7v10M20 9v6M7 12h10" />
