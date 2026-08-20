@@ -22,12 +22,19 @@ const dateTimeFormatter = new Intl.DateTimeFormat('pt-BR', {
 
 const weekdayFormatter = new Intl.DateTimeFormat('pt-BR', { weekday: 'short' })
 
+const timeFormatter = new Intl.DateTimeFormat('pt-BR', { hour: '2-digit', minute: '2-digit' })
+
 export function formatDate(ts: number): string {
   return dateFormatter.format(ts)
 }
 
 export function formatDateTime(ts: number): string {
   return dateTimeFormatter.format(ts)
+}
+
+/** "14:32" — hora do lançamento. Só serve para instantes do próprio dia. */
+export function formatTime(ts: number): string {
+  return timeFormatter.format(ts)
 }
 
 export function formatWeekday(ts: number): string {

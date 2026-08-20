@@ -8,7 +8,7 @@ import { PageHeader } from '../components/PageHeader'
 import { EmptyState } from '../components/EmptyState'
 import { DrinkLogModal } from '../components/DrinkLogModal'
 import { CheckIcon } from '../components/icons'
-import { formatMl, formatWeekday, startOfDay } from '../lib/format'
+import { formatMl, formatTime, formatWeekday, startOfDay } from '../lib/format'
 
 export function HealthPage() {
   const navigate = useNavigate()
@@ -146,7 +146,7 @@ export function HealthPage() {
                       {drink?.name ?? 'Bebida removida'}
                     </div>
                     <div className="list__meta">
-                      {formatMl(log.ml)}
+                      {formatTime(log.at)} · {formatMl(log.ml)}
                       {log.countedMl !== log.ml && ` · conta ${formatMl(log.countedMl)}`}
                     </div>
                   </div>
@@ -159,20 +159,27 @@ export function HealthPage() {
 
         <h2 className="section-title">Últimos dias</h2>
         <div className="row" style={{ gap: 6, flexWrap: 'wrap' }}>
-          {historico.map((d) => (
-            <div
-              key={d.day}
-              className="card card--tight"
-              style={{ flex: '1 1 0', minWidth: 42, textAlign: 'center', padding: 8 }}
-            >
-              <div className="stat__label">{formatWeekday(d.day)}</div>
-              <div style={{ fontSize: 18, marginTop: 2 }}>{d.hit ? '💧' : '·'}</div>
-            </div>
-          ))}
+          {historico.map((d) => {
+            // Hoje fica neutro até o dia acabar: um ❌ às 8h da manhã soaria
+            // como reprovação antes de qualquer chance real de beber os 2,5 l.
+            const isHoje = d.day === startOfDay(Date.now())
+            const icone = d.hit ? '💧' : isHoje ? '·' : '❌'
+            return (
+              <div
+                key={d.day}
+                className="card card--tight"
+                style={{ flex: '1 1 0', minWidth: 42, textAlign: 'center', padding: 8 }}
+              >
+                <div className="stat__label">{formatWeekday(d.day)}</div>
+                <div style={{ fontSize: 18, marginTop: 2 }}>{icone}</div>
+              </div>
+            )
+          })}
         </div>
         <p className="hint" style={{ marginTop: 6 }}>
-          A gota marca os dias em que a meta foi batida. Cada dia guarda a meta que
-          valia nele, então mudar a meta agora não reescreve o passado.
+          💧 bateu a meta · ❌ não bateu · · hoje, ainda em andamento. Cada dia
+          guarda a meta que valia nele, então mudar a meta agora não reescreve o
+          passado.
         </p>
 
         <h2 className="section-title">Nutrição</h2>
