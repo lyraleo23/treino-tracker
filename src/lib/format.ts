@@ -301,3 +301,19 @@ export function parseNumber(value: string): number | undefined {
   const parsed = Number(normalized)
   return Number.isFinite(parsed) ? parsed : undefined
 }
+
+/** "1850 kcal" — nunca precisa de escala como o ml, então só arredonda. */
+export function formatKcal(value: number): string {
+  return `${formatNumber(Math.max(0, value), 0)} kcal`
+}
+
+/** "42 g" — proteína, carboidrato ou gordura. */
+export function formatGrams(value: number): string {
+  return `${formatNumber(Math.max(0, value))} g`
+}
+
+export const DIET_CATEGORY_LABELS: Record<string, string> = {
+  protein: 'Proteína',
+  carbohydrate: 'Carboidrato',
+  options: 'Opções',
+}

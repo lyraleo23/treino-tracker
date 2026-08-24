@@ -48,6 +48,13 @@ export interface HydrationSettings {
 
 export const DEFAULT_HYDRATION: HydrationSettings = { goalMl: 2500 }
 
+export interface NutritionSettings {
+  kcalMin: number
+  kcalMax: number
+}
+
+export const DEFAULT_NUTRITION: NutritionSettings = { kcalMin: 2201, kcalMax: 2400 }
+
 /**
  * Linha única de configuração do app — `id` é sempre 'app'. Quando ela não
  * existe, quem lê cai nos padrões, então não há o que semear.
@@ -57,6 +64,8 @@ export interface Settings {
   ladder: LadderRatios
   /** Ausente na linha gravada antes da hidratação existir. */
   hydration?: HydrationSettings
+  /** Ausente na linha gravada antes da nutrição existir. */
+  nutrition?: NutritionSettings
 }
 
 // --- Hidratação ---------------------------------------------------------
@@ -119,6 +128,110 @@ export interface HydrationDay {
 
 /** Flag booleana persistida como 0/1 porque o IndexedDB não indexa boolean. */
 export type Flag = 0 | 1
+
+// --- Nutrição ------------------------------------------------------------
+
+/**
+ * Um alimento do catálogo, com a nutrição por unidade-base. `baseUnit` é
+ * texto livre ('un', 'g', 'ml', 'fatia', 'tbsp', 'tsp', 'portion',
+ * 'un_serving') porque a dieta de origem usa unidades heterogêneas por
+ * alimento — não faz sentido normalizar tudo para grama.
+ */
+export interface Food {
+  id: string
+  name: string
+  baseUnit: string
+  /** null quando a fonte não define nutrição (ex.: fruta variável do dia). */
+  caloriesPerBaseUnit: number | null
+  proteinPerBaseUnit: number | null
+  carbsPerBaseUnit: number | null
+  fatPerBaseUnit: number | null
+  nutritionEstimated: boolean
+  order: number
+  archived: Flag
+  createdAt: number
+}
+
+/** Um item dentro de uma opção do plano — a sugestão, não o que foi comido. */
+export interface DietIngredient {
+  foodId: string
+  quantity: number
+  unit: string
+  /** Ingredientes que se substituem entre si dentro da mesma opção (ex.: kiwi OU papaia). */
+  alternativeGroup?: string
+  /** Quantidade não conversível de forma exata para o base_unit do alimento (ex.: "1 fio" de azeite). */
+  estimated?: boolean
+}
+
+export type DietSelectionMode = 'one_from_each_category' | 'one_option'
+
+/** Uma refeição fixa do dia: café da manhã, almoço... Dado de plano, não de execução. */
+export interface DietMeal {
+  id: string
+  name: string
+  order: number
+  selectionMode: DietSelectionMode
+  /** Chaves livres (ex.: {protein: 1, carbohydrate: 1} ou {options: 1}), batem com a categoria das DietOption da refeição. */
+  selectionRules: Record<string, number>
+  optionalSides?: string[]
+}
+
+/** Uma alternativa dentro de uma categoria de uma refeição: "Frango desfiado". */
+export interface DietOption {
+  id: string
+  mealId: string
+  /** 'protein' | 'carbohydrate' | 'options' — texto livre, não fixo no código. */
+  category: string
+  name: string
+  order: number
+  ingredients: DietIngredient[]
+  /**
+   * Linhas do `alternative`/`alternative_group` da fonte, pré-preenchidas com
+   * quantidade 0 no registro — a troca acontece editando quantidade, não por
+   * um seletor de escolha exclusiva.
+   */
+  alternativeIngredients?: DietIngredient[]
+  alternativeLogic?: string
+  notes?: string[]
+  preparation?: string
+}
+
+/** Uma ocasião em que uma refeição foi registrada. */
+export interface MealLog {
+  id: string
+  /** Meia-noite local do dia. */
+  day: number
+  mealId: string
+  at: number
+}
+
+/** Um alimento efetivamente registrado dentro de um MealLog. */
+export interface MealLogItem {
+  id: string
+  mealLogId: string
+  /** Denormalizado do MealLog: soma o dia inteiro num único índice, sem N+1. */
+  day: number
+  foodId: string
+  quantity: number
+  unit: string
+  /** Nutrição computada e congelada no momento do registro. */
+  calories: number
+  proteinG: number
+  carbsG: number
+  fatG: number
+  /** false quando o alimento não tinha nutrição conhecida ou a unidade não batia com o base_unit — os quatro campos acima ficam 0. */
+  nutritionKnown: boolean
+}
+
+/**
+ * O dia, com a faixa de kcal que valia nele — mesmo motivo do HydrationDay:
+ * mudar a meta agora não pode reescrever se um dia passado bateu ou não.
+ */
+export interface NutritionDay {
+  day: number
+  kcalMin: number
+  kcalMax: number
+}
 
 /**
  * Exercício é uma entidade global do catálogo. Treinos apenas o referenciam,
@@ -300,6 +413,12 @@ class TreinoDB extends Dexie {
   drinkShortcuts!: Table<DrinkShortcut, string>
   drinkLogs!: Table<DrinkLog, string>
   hydrationDays!: Table<HydrationDay, number>
+  foods!: Table<Food, string>
+  dietMeals!: Table<DietMeal, string>
+  dietOptions!: Table<DietOption, string>
+  mealLogs!: Table<MealLog, string>
+  mealLogItems!: Table<MealLogItem, string>
+  nutritionDays!: Table<NutritionDay, number>
   programs!: Table<Program, string>
   workouts!: Table<Workout, string>
   workoutItems!: Table<WorkoutItem, string>
@@ -419,6 +538,17 @@ class TreinoDB extends Dexie {
       drinkShortcuts: 'id, order, drinkId, containerId',
       drinkLogs: 'id, day, drinkId, [day+at]',
       hydrationDays: 'day',
+    })
+
+    // Idem: tabelas novas, sem dado antigo para converter. O catálogo de
+    // dieta é semeado pelo `ensureDietCatalog`, que roda em toda abertura.
+    this.version(6).stores({
+      foods: 'id, order, archived',
+      dietMeals: 'id, order',
+      dietOptions: 'id, mealId, category, order, [mealId+category]',
+      mealLogs: 'id, day, mealId, [day+at]',
+      mealLogItems: 'id, mealLogId, day, foodId',
+      nutritionDays: 'day',
     })
   }
 }

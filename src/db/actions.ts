@@ -3,12 +3,14 @@ import {
   db,
   DEFAULT_HYDRATION,
   DEFAULT_LADDER_RATIOS,
+  DEFAULT_NUTRITION,
   type CardioField,
   type Cycle,
   type Exercise,
   type ExerciseKind,
   type Flag,
   type LadderRatios,
+  type MealLogItem,
   type Program,
   type Session,
   type SetBlock,
@@ -18,6 +20,7 @@ import {
 } from './db'
 import { newId } from '../lib/id'
 import { startOfDay } from '../lib/format'
+import { computeItemNutrition } from '../lib/nutrition'
 
 // --- Exercícios ---------------------------------------------------------
 
@@ -141,6 +144,7 @@ export async function saveLadderRatios(ladder: LadderRatios): Promise<void> {
 export async function saveHydrationGoal(goalMl: number): Promise<void> {
   const current = await db.settings.get('app')
   await db.settings.put({
+    ...current,
     id: 'app',
     ladder: current?.ladder ?? DEFAULT_LADDER_RATIOS,
     hydration: { goalMl: Math.max(1, Math.round(goalMl)) },
@@ -275,6 +279,111 @@ export async function addShortcut(drinkId: string, containerId: string): Promise
 
 export async function deleteShortcut(id: string): Promise<void> {
   await db.drinkShortcuts.delete(id)
+}
+
+// --- Nutrição -------------------------------------------------------------
+
+export async function saveNutritionGoal(kcalMin: number, kcalMax: number): Promise<void> {
+  const current = await db.settings.get('app')
+  await db.settings.put({
+    ...current,
+    id: 'app',
+    ladder: current?.ladder ?? DEFAULT_LADDER_RATIOS,
+    nutrition: { kcalMin: Math.max(1, Math.round(kcalMin)), kcalMax: Math.max(1, Math.round(kcalMax)) },
+  })
+}
+
+type LoggedItemInput = { foodId: string; quantity: number; unit: string }
+
+/**
+ * Registra uma refeição. Congela duas coisas: a nutrição de cada item pelo
+ * catálogo vigente no momento e a faixa de kcal do dia no `NutritionDay` —
+ * sem isso, editar um alimento ou a meta depois reescreveria dias já julgados.
+ */
+export async function logMeal(data: {
+  mealId: string
+  items: LoggedItemInput[]
+  at?: number
+}): Promise<string> {
+  const at = data.at ?? Date.now()
+  const day = startOfDay(at)
+  const kept = data.items.filter((item) => item.quantity > 0)
+
+  return db.transaction(
+    'rw',
+    [db.foods, db.mealLogs, db.mealLogItems, db.nutritionDays, db.settings],
+    async () => {
+      if (!(await db.nutritionDays.get(day))) {
+        const settings = await db.settings.get('app')
+        const goal = settings?.nutrition ?? DEFAULT_NUTRITION
+        await db.nutritionDays.add({ day, kcalMin: goal.kcalMin, kcalMax: goal.kcalMax })
+      }
+
+      const mealLogId = newId()
+      await db.mealLogs.add({ id: mealLogId, day, mealId: data.mealId, at })
+
+      for (const entry of kept) {
+        const food = await db.foods.get(entry.foodId)
+        const computed = computeItemNutrition(food, entry.quantity, entry.unit)
+        const item: MealLogItem = {
+          id: newId(),
+          mealLogId,
+          day,
+          foodId: entry.foodId,
+          quantity: entry.quantity,
+          unit: entry.unit,
+          calories: computed.calories,
+          proteinG: computed.proteinG,
+          carbsG: computed.carbsG,
+          fatG: computed.fatG,
+          nutritionKnown: computed.known,
+        }
+        await db.mealLogItems.add(item)
+      }
+
+      return mealLogId
+    },
+  )
+}
+
+/**
+ * Corrige um registro já salvo. Aqui a nutrição é recalculada com o catálogo
+ * **atual** — quem está editando quer o valor de hoje, não o congelado.
+ */
+export async function updateMealLog(id: string, items: LoggedItemInput[]): Promise<void> {
+  const mealLog = await db.mealLogs.get(id)
+  if (!mealLog) return
+
+  const kept = items.filter((item) => item.quantity > 0)
+
+  await db.transaction('rw', [db.foods, db.mealLogItems], async () => {
+    await db.mealLogItems.where('mealLogId').equals(id).delete()
+
+    for (const entry of kept) {
+      const food = await db.foods.get(entry.foodId)
+      const computed = computeItemNutrition(food, entry.quantity, entry.unit)
+      await db.mealLogItems.add({
+        id: newId(),
+        mealLogId: id,
+        day: mealLog.day,
+        foodId: entry.foodId,
+        quantity: entry.quantity,
+        unit: entry.unit,
+        calories: computed.calories,
+        proteinG: computed.proteinG,
+        carbsG: computed.carbsG,
+        fatG: computed.fatG,
+        nutritionKnown: computed.known,
+      })
+    }
+  })
+}
+
+export async function deleteMealLog(id: string): Promise<void> {
+  await db.transaction('rw', [db.mealLogs, db.mealLogItems], async () => {
+    await db.mealLogItems.where('mealLogId').equals(id).delete()
+    await db.mealLogs.delete(id)
+  })
 }
 
 // --- Programas ----------------------------------------------------------

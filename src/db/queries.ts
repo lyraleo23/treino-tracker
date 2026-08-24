@@ -3,8 +3,12 @@ import {
   db,
   DEFAULT_HYDRATION,
   DEFAULT_LADDER_RATIOS,
+  DEFAULT_NUTRITION,
   type DrinkLog,
   type LadderRatios,
+  type MealLog,
+  type MealLogItem,
+  type NutritionSettings,
   type SetBlock,
   type SetLog,
   type Target,
@@ -472,6 +476,84 @@ export async function getHydrationHistory(days: number): Promise<DayHydration[]>
 
   for (let i = days - 1; i >= 0; i -= 1) {
     resultado.push(await getDayHydration(startOfDay(hoje - i * 86400000)))
+  }
+
+  return resultado
+}
+
+// --- Nutrição ------------------------------------------------------------
+
+/** Meta corrente; sem configuração salva, o padrão. */
+export async function getNutritionGoal(): Promise<NutritionSettings> {
+  return (await db.settings.get('app'))?.nutrition ?? DEFAULT_NUTRITION
+}
+
+export interface DayNutrition {
+  day: number
+  logs: MealLog[]
+  itemsByLog: Map<string, MealLogItem[]>
+  kcalMin: number
+  kcalMax: number
+  totalCalories: number
+  totalProteinG: number
+  totalCarbsG: number
+  totalFatG: number
+  hit: boolean
+  over: boolean
+  hasUnknown: boolean
+}
+
+/**
+ * O dia inteiro. A faixa de kcal vem do registro do dia quando ele existe —
+ * é a que valia então; um dia ainda sem lançamento cai na meta corrente.
+ */
+export async function getDayNutrition(day: number): Promise<DayNutrition> {
+  const [logs, items, saved, current] = await Promise.all([
+    db.mealLogs.where('day').equals(day).sortBy('at'),
+    // Índice denormalizado em `day`: soma o dia inteiro sem um lookup por MealLog.
+    db.mealLogItems.where('day').equals(day).toArray(),
+    db.nutritionDays.get(day),
+    getNutritionGoal(),
+  ])
+
+  const kcalMin = saved?.kcalMin ?? current.kcalMin
+  const kcalMax = saved?.kcalMax ?? current.kcalMax
+
+  const itemsByLog = new Map<string, MealLogItem[]>()
+  for (const item of items) {
+    const list = itemsByLog.get(item.mealLogId) ?? []
+    list.push(item)
+    itemsByLog.set(item.mealLogId, list)
+  }
+
+  const totalCalories = items.reduce((sum, item) => sum + item.calories, 0)
+  const totalProteinG = items.reduce((sum, item) => sum + item.proteinG, 0)
+  const totalCarbsG = items.reduce((sum, item) => sum + item.carbsG, 0)
+  const totalFatG = items.reduce((sum, item) => sum + item.fatG, 0)
+
+  return {
+    day,
+    logs,
+    itemsByLog,
+    kcalMin,
+    kcalMax,
+    totalCalories,
+    totalProteinG,
+    totalCarbsG,
+    totalFatG,
+    hit: totalCalories >= kcalMin && totalCalories <= kcalMax,
+    over: totalCalories > kcalMax,
+    hasUnknown: items.some((item) => !item.nutritionKnown),
+  }
+}
+
+/** Os últimos `days` dias, do mais antigo para o mais recente. */
+export async function getNutritionHistory(days: number): Promise<DayNutrition[]> {
+  const hoje = startOfDay(Date.now())
+  const resultado: DayNutrition[] = []
+
+  for (let i = days - 1; i >= 0; i -= 1) {
+    resultado.push(await getDayNutrition(startOfDay(hoje - i * 86400000)))
   }
 
   return resultado

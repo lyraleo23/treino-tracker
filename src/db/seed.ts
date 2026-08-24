@@ -6,6 +6,7 @@ import {
   type ExerciseKind,
 } from './db'
 import { newId } from '../lib/id'
+import { ensureDietCatalog } from './dietSeed'
 
 type SeedExercise = [name: string, kind: ExerciseKind, muscleGroup: string]
 
@@ -154,6 +155,7 @@ export async function seedIfEmpty(): Promise<void> {
   // programa não, por exemplo depois de restaurar um backup antigo.
   await ensureProgram()
   await ensureHydrationCatalog()
+  await ensureDietCatalog()
 
   const count = await db.exercises.count()
   if (count > 0) return

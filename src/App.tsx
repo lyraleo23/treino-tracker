@@ -5,6 +5,7 @@ import { WorkoutsPage } from './pages/WorkoutsPage'
 import { ProgramsPage } from './pages/ProgramsPage'
 import { HealthPage } from './pages/HealthPage'
 import { HydrationSetupPage } from './pages/HydrationSetupPage'
+import { MealLogPage } from './pages/MealLogPage'
 import { WorkoutEditPage } from './pages/WorkoutEditPage'
 import { WorkoutItemPage } from './pages/WorkoutItemPage'
 import { SessionPage } from './pages/SessionPage'
@@ -38,6 +39,7 @@ export function App() {
           <Route path="/historico/:sessionId" element={<SessionDetailPage />} />
           <Route path="/saude" element={<HealthPage />} />
           <Route path="/saude/hidratacao" element={<HydrationSetupPage />} />
+          <Route path="/saude/refeicao/:mealId" element={<MealLogPage />} />
           <Route path="/exercicios" element={<ExercisesPage />} />
           <Route
             path="/exercicios/:exerciseId"

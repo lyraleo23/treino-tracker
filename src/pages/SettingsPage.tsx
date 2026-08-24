@@ -219,12 +219,8 @@ export function SettingsPage() {
           </button>
         </div>
 
-        {/* Hidratação saiu daqui: virou a aba Saúde. Nutrição segue marcador
-            de lugar até ganhar forma. */}
-        <h2 className="section-title">Nutrição</h2>
-        <p className="hint" style={{ marginTop: 0 }}>
-          Em breve.
-        </p>
+        {/* Hidratação e Nutrição saíram daqui: viraram a aba Saúde — a meta
+            de kcal se ajusta por lá, junto do card de progresso do dia. */}
 
         <h2 className="section-title">Backup</h2>
         <div className="stack">
