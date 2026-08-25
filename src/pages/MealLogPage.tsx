@@ -4,9 +4,14 @@ import { useLiveQuery } from 'dexie-react-hooks'
 import { db, type DietIngredient, type DietOption } from '../db/db'
 import { logMeal } from '../db/actions'
 import { PageHeader } from '../components/PageHeader'
+import { EmptyState } from '../components/EmptyState'
+import { FoodPicker } from '../components/FoodPicker'
+import { TrashIcon } from '../components/icons'
 import { computeItemNutrition, sumNutrition } from '../lib/nutrition'
 import { DIET_CATEGORY_LABELS, formatGrams, formatKcal, parseNumber } from '../lib/format'
 import { VEGETABLES_UNLIMITED } from '../db/dietSeed'
+
+type Mode = 'plan' | 'free'
 
 interface Row {
   key: string
@@ -38,6 +43,9 @@ export function MealLogPage() {
 
   const [selected, setSelected] = useState<Record<string, string>>({})
   const [quantities, setQuantities] = useState<Record<string, string>>({})
+  const [mode, setMode] = useState<Mode>('plan')
+  const [freeFoodIds, setFreeFoodIds] = useState<string[]>([])
+  const [pickerOpen, setPickerOpen] = useState(false)
 
   const data = useLiveQuery(async () => {
     if (!mealId) return undefined
@@ -72,7 +80,16 @@ export function MealLogPage() {
     })
     .filter((o): o is DietOption => !!o)
 
-  const rows = chosenOptions.flatMap(rowsFor)
+  const rows =
+    mode === 'plan'
+      ? chosenOptions.flatMap(rowsFor)
+      : freeFoodIds.map((foodId) => ({
+          key: `free-${foodId}`,
+          foodId,
+          unit: foodById.get(foodId)?.baseUnit ?? '',
+          defaultQuantity: 0,
+          isAlternative: false,
+        }))
 
   const parsedByKey = new Map<string, number>()
   for (const row of rows) {
@@ -107,36 +124,77 @@ export function MealLogPage() {
       <PageHeader title={meal.name} back backTo="/saude" backLabel="Saúde" />
 
       <div className="page">
-        {categories.map((category) => {
-          const options = byCategory.get(category) ?? []
-          const label = DIET_CATEGORY_LABELS[category] ?? category
-          return (
-            <div className="field" key={category}>
-              <span className="field__label">{label}</span>
-              <div className="chip-grid">
-                {options.map((option) => (
-                  <button
-                    key={option.id}
-                    type="button"
-                    className={selected[category] === option.id ? 'chip-option is-active' : 'chip-option'}
-                    onClick={() => setSelected({ ...selected, [category]: option.id })}
-                  >
-                    {option.name}
-                  </button>
-                ))}
-              </div>
-            </div>
-          )
-        })}
+        <div className="chip-grid" style={{ marginBottom: 12 }}>
+          <button
+            type="button"
+            className={mode === 'plan' ? 'chip-option is-active' : 'chip-option'}
+            onClick={() => setMode('plan')}
+          >
+            Do plano
+          </button>
+          <button
+            type="button"
+            className={mode === 'free' ? 'chip-option is-active' : 'chip-option'}
+            onClick={() => setMode('free')}
+          >
+            Refeição livre
+          </button>
+        </div>
 
-        {!allChosen && (
+        {mode === 'plan' &&
+          categories.map((category) => {
+            const options = byCategory.get(category) ?? []
+            const label = DIET_CATEGORY_LABELS[category] ?? category
+            return (
+              <div className="field" key={category}>
+                <span className="field__label">{label}</span>
+                <div className="chip-grid">
+                  {options.map((option) => (
+                    <button
+                      key={option.id}
+                      type="button"
+                      className={selected[category] === option.id ? 'chip-option is-active' : 'chip-option'}
+                      onClick={() => setSelected({ ...selected, [category]: option.id })}
+                    >
+                      {option.name}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )
+          })}
+
+        {mode === 'plan' && !allChosen && (
           <p className="hint">Escolha uma opção de cada categoria para ver os ingredientes.</p>
         )}
 
-        {allChosen && (
+        {mode === 'free' && freeFoodIds.length === 0 && (
+          <EmptyState
+            icon="🍽️"
+            title="Nenhum alimento adicionado"
+            description="Toque para escolher alimentos do catálogo."
+            action={
+              <button type="button" className="btn btn--primary" onClick={() => setPickerOpen(true)}>
+                Adicionar alimento
+              </button>
+            }
+          />
+        )}
+
+        {mode === 'free' && freeFoodIds.length > 0 && (
+          <button
+            type="button"
+            className="btn btn--block"
+            onClick={() => setPickerOpen(true)}
+          >
+            + Adicionar alimento
+          </button>
+        )}
+
+        {rows.length > 0 && (
           <>
-            {chosenOptions.some((o) => o.alternativeLogic || o.notes || o.preparation) && (
-              <div className="stack" style={{ marginBottom: 12 }}>
+            {mode === 'plan' && chosenOptions.some((o) => o.alternativeLogic || o.notes || o.preparation) && (
+              <div className="stack" style={{ marginBottom: 12, marginTop: 12 }}>
                 {chosenOptions.map((option) => (
                   <div key={option.id}>
                     {option.alternativeLogic && <p className="hint" style={{ margin: 0 }}>{option.alternativeLogic}</p>}
@@ -178,12 +236,22 @@ export function MealLogPage() {
                       }
                     />
                     <span className="hint" style={{ minWidth: 40 }}>{row.unit}</span>
+                    {mode === 'free' && (
+                      <button
+                        type="button"
+                        className="btn btn--icon btn--ghost"
+                        aria-label={`Remover ${food?.name ?? 'alimento'}`}
+                        onClick={() => setFreeFoodIds(freeFoodIds.filter((id) => id !== row.foodId))}
+                      >
+                        <TrashIcon />
+                      </button>
+                    )}
                   </div>
                 )
               })}
             </div>
 
-            {showVegetables && (
+            {mode === 'plan' && showVegetables && (
               <p className="hint">
                 À vontade: {VEGETABLES_UNLIMITED.join(', ')}. Não conta calorias.
               </p>
@@ -213,6 +281,20 @@ export function MealLogPage() {
           </>
         )}
       </div>
+
+      {pickerOpen && (
+        <FoodPicker
+          selectedIds={freeFoodIds}
+          onToggle={(foodId) =>
+            setFreeFoodIds(
+              freeFoodIds.includes(foodId)
+                ? freeFoodIds.filter((id) => id !== foodId)
+                : [...freeFoodIds, foodId],
+            )
+          }
+          onClose={() => setPickerOpen(false)}
+        />
+      )}
     </>
   )
 }
