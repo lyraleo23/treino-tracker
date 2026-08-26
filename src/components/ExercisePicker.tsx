@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react'
 import { useLiveQuery } from 'dexie-react-hooks'
 import { db, type Exercise, type ExerciseKind } from '../db/db'
-import { KIND_LABELS } from '../lib/format'
+import { KIND_LABELS, normalizeSearchText } from '../lib/format'
 import { Modal } from './Modal'
 import { ExerciseFormModal } from './ExerciseFormModal'
 
@@ -41,15 +41,15 @@ export function ExercisePicker({
 
   const filtered = useMemo(() => {
     if (!exercises) return []
-    const term = search.trim().toLowerCase()
+    const term = normalizeSearchText(search)
     return exercises
       .filter((e) => !excludeIds.includes(e.id))
       .filter((e) => !kind || e.kind === kind)
       .filter(
         (e) =>
           !term ||
-          e.name.toLowerCase().includes(term) ||
-          (e.muscleGroup ?? '').toLowerCase().includes(term),
+          normalizeSearchText(e.name).includes(term) ||
+          normalizeSearchText(e.muscleGroup ?? '').includes(term),
       )
       .sort((a, b) => a.name.localeCompare(b.name, 'pt-BR'))
   }, [exercises, search, kind, excludeIds])

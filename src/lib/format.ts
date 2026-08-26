@@ -317,3 +317,20 @@ export const DIET_CATEGORY_LABELS: Record<string, string> = {
   carbohydrate: 'Carboidrato',
   options: 'Opções',
 }
+
+/**
+ * Normaliza texto para busca tolerante a acento e caixa ("cafe" encontra
+ * "café"). Também corrige buscas que não davam match nenhum: teclados
+ * mobile às vezes compõem acentos em forma Unicode diferente (NFD) da usada
+ * nas strings do app (NFC) — `.includes()` puro falha nesse caso mesmo com
+ * o texto visualmente idêntico. `normalize('NFD')` decompõe ambos os lados
+ * antes de remover os diacríticos, então a comparação nunca depende de qual
+ * forma o texto de origem chegou.
+ */
+export function normalizeSearchText(value: string): string {
+  return value
+    .trim()
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/\p{Diacritic}/gu, '')
+}

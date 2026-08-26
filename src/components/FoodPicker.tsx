@@ -3,7 +3,7 @@ import { useLiveQuery } from 'dexie-react-hooks'
 import { db } from '../db/db'
 import { Modal } from './Modal'
 import { CheckIcon } from './icons'
-import { formatKcal } from '../lib/format'
+import { formatKcal, normalizeSearchText } from '../lib/format'
 
 interface Props {
   /** Já adicionados nesta refeição — marcados como ativos. */
@@ -25,9 +25,9 @@ export function FoodPicker({ selectedIds, onToggle, onClose }: Props) {
 
   const filtered = useMemo(() => {
     if (!foods) return []
-    const term = search.trim().toLowerCase()
+    const term = normalizeSearchText(search)
     return foods
-      .filter((f) => !term || f.name.toLowerCase().includes(term))
+      .filter((f) => !term || normalizeSearchText(f.name).includes(term))
       .sort((a, b) => a.name.localeCompare(b.name, 'pt-BR'))
   }, [foods, search])
 
