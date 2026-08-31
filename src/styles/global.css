@@ -390,6 +390,10 @@ h3 {
   --block-color: var(--accent);
 }
 
+.block--cluster {
+  --block-color: #ef4444;
+}
+
 .block--top {
   --block-color: #f472b6;
 }

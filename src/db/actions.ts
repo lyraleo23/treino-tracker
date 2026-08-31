@@ -681,13 +681,50 @@ export async function moveWorkoutItem(id: string, direction: -1 | 1): Promise<vo
 
 // --- Blocos de séries ---------------------------------------------------
 
-export type BlockPreset = 'feederWorking' | 'simple' | 'time' | 'cardio' | 'cardioLadder'
+export type BlockPreset =
+  | 'feederWorking'
+  | 'clusterFull'
+  | 'simple'
+  | 'time'
+  | 'cardio'
+  | 'cardioLadder'
 
 type BlockDraft = Omit<SetBlock, 'id' | 'workoutItemId' | 'order'>
 
+/** Bloco de aquecimento sugerido ao adicionar um do tipo warmup. */
+export const WARMUP_DEFAULT: BlockDraft = {
+  kind: 'warmup',
+  sets: 2,
+  target: { kind: 'repsRange', min: 15, max: 20 },
+  note: 'carga moderada',
+}
+
+/**
+ * Working set fatiado: 3 blocos de 3 a 4 reps com 20s entre eles. O `restSeconds`
+ * é esse respiro curto; o descanso longo que vem depois do cluster não tem campo
+ * próprio no bloco, então fica na observação, que a tela mostra logo abaixo.
+ */
+export const CLUSTER_DEFAULT: BlockDraft = {
+  kind: 'cluster',
+  sets: 3,
+  target: { kind: 'repsRange', min: 3, max: 4 },
+  restSeconds: 20,
+  note: '20s entre blocos · 2 a 3 min ao terminar',
+}
+
+/** Back-off: uma série leve de 10 a 12 reps fechando o exercício. */
+export const BACKOFF_DEFAULT: BlockDraft = {
+  kind: 'backoff',
+  sets: 1,
+  target: { kind: 'repsRange', min: 10, max: 12 },
+  restSeconds: 60,
+  restSecondsMax: 120,
+}
+
 /**
  * Modelos prontos para não montar quatro blocos na mão a cada exercício.
- * `feederWorking` reproduz a estrutura do plano Upper Body.
+ * `feederWorking` reproduz a estrutura do plano Upper Body; `clusterFull` é o
+ * exercício inteiro da planilha, do aquecimento ao back-off.
  */
 const PRESETS: Record<BlockPreset, BlockDraft[]> = {
   feederWorking: [
@@ -708,6 +745,19 @@ const PRESETS: Record<BlockPreset, BlockDraft[]> = {
       restSecondsMax: 180,
     },
   ],
+  clusterFull: [
+    WARMUP_DEFAULT,
+    { kind: 'feeder', sets: 2, target: { kind: 'repsRange', min: 5, max: 6 }, restSeconds: 60 },
+    {
+      kind: 'feeder',
+      sets: 2,
+      target: { kind: 'repsRange', min: 5, max: 6 },
+      restSeconds: 60,
+      restSecondsMax: 120,
+    },
+    CLUSTER_DEFAULT,
+    BACKOFF_DEFAULT,
+  ],
   simple: [
     {
       kind: 'working',
@@ -724,14 +774,6 @@ const PRESETS: Record<BlockPreset, BlockDraft[]> = {
     sets: 1,
     target: { kind: 'cardio' as const, seconds: 4 * 60 },
   })),
-}
-
-/** Bloco de aquecimento sugerido ao adicionar um do tipo warmup. */
-export const WARMUP_DEFAULT: BlockDraft = {
-  kind: 'warmup',
-  sets: 2,
-  target: { kind: 'repsRange', min: 15, max: 20 },
-  note: 'carga moderada',
 }
 
 async function nextBlockOrder(workoutItemId: string): Promise<number> {

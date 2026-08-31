@@ -10,17 +10,30 @@ import { ConfirmDialog } from '../components/Modal'
 import { parseNumber } from '../lib/format'
 
 /**
- * Os três percentuais da escada, na ordem em que se lê a progressão. A unidade
- * vai no rótulo, como o app já faz nos campos de cardio ("Inclinação (%)"):
- * sem ela, `50` num campo de treino se lê como quilo.
+ * Os percentuais da escada, na ordem em que se lê a progressão. A unidade vai
+ * no rótulo, como o app já faz nos campos de cardio ("Inclinação (%)"): sem
+ * ela, `50` num campo de treino se lê como quilo.
+ *
+ * O back-off vem depois da âncora e por isso desce de novo: é a carga da
+ * estreia do bloco, antes de ele passar a carregar a própria.
  */
 const LADDER_FIELDS = [
   { key: 'warmup', label: 'Aquecimento (%)' },
   { key: 'feederMin', label: 'Feeder mín. (%)' },
   { key: 'feederMax', label: 'Feeder máx. (%)' },
+  { key: 'backoff', label: 'Back-off (%)' },
 ] as const
 
-type LadderForm = Record<(typeof LADDER_FIELDS)[number]['key'], string>
+type LadderKey = (typeof LADDER_FIELDS)[number]['key']
+type LadderForm = Record<LadderKey, string>
+
+/** Aplica `fn` a cada percentual — evita repetir as chaves em quatro lugares. */
+function mapLadder<T>(fn: (key: LadderKey) => T): Record<LadderKey, T> {
+  return Object.fromEntries(LADDER_FIELDS.map((field) => [field.key, fn(field.key)])) as Record<
+    LadderKey,
+    T
+  >
+}
 
 export function SettingsPage() {
   const fileInput = useRef<HTMLInputElement>(null)
@@ -38,17 +51,11 @@ export function SettingsPage() {
   // A razão é guardada como 0,85; a tela fala em 85%. A conversão vive só aqui.
   const toPercent = (value: number) => String(Math.round(value * 1000) / 10)
 
-  const ladder: LadderForm = ladderForm ?? {
-    warmup: toPercent(savedRatios?.warmup ?? DEFAULT_LADDER_RATIOS.warmup),
-    feederMin: toPercent(savedRatios?.feederMin ?? DEFAULT_LADDER_RATIOS.feederMin),
-    feederMax: toPercent(savedRatios?.feederMax ?? DEFAULT_LADDER_RATIOS.feederMax),
-  }
+  const ladder: LadderForm =
+    ladderForm ??
+    mapLadder((key) => toPercent(savedRatios?.[key] ?? DEFAULT_LADDER_RATIOS[key]))
 
-  const parsedLadder = {
-    warmup: parseNumber(ladder.warmup),
-    feederMin: parseNumber(ladder.feederMin),
-    feederMax: parseNumber(ladder.feederMax),
-  }
+  const parsedLadder = mapLadder((key) => parseNumber(ladder[key]))
 
   const naFaixa = Object.values(parsedLadder).every(
     (value) => value !== undefined && value >= 1 && value <= 99,
@@ -68,11 +75,7 @@ export function SettingsPage() {
 
   async function handleSaveRatios() {
     if (ladderError) return
-    await saveLadderRatios({
-      warmup: parsedLadder.warmup! / 100,
-      feederMin: parsedLadder.feederMin! / 100,
-      feederMax: parsedLadder.feederMax! / 100,
-    })
+    await saveLadderRatios(mapLadder((key) => parsedLadder[key]! / 100))
     setLadderForm(null)
     setMessage('Distribuição de carga salva.')
   }
@@ -164,7 +167,8 @@ export function SettingsPage() {
         <h2 className="section-title">Distribuição de carga</h2>
         <p className="hint" style={{ marginTop: 0 }}>
           Percentuais do working set usados na sugestão de carga. Com vários feeders,
-          eles são distribuídos em passos iguais entre o mínimo e o máximo.
+          eles são distribuídos em passos iguais entre o mínimo e o máximo. O back-off
+          vale só na estreia do bloco: depois disso ele carrega a própria carga.
         </p>
         {/* alignItems end mantém os campos alinhados pela base quando um rótulo
             quebra em duas linhas e os outros não. */}
@@ -196,7 +200,7 @@ export function SettingsPage() {
 
         <p className="hint">
           {ladderError ??
-            `Com working a 100 kg e 2 feeders: aquecimento ${ladder.warmup}% · feeders ${ladder.feederMin}% e ${ladder.feederMax}% · working 100%.`}
+            `Com working a 100 kg e 2 feeders: aquecimento ${ladder.warmup}% · feeders ${ladder.feederMin}% e ${ladder.feederMax}% · working 100% · back-off ${ladder.backoff}%.`}
         </p>
         {ladderWarning && (
           <p className="hint" style={{ color: 'var(--warn)' }}>

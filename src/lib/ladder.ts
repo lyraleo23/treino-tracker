@@ -23,7 +23,7 @@ function feederRatio(index: number, total: number, ratios: LadderRatios): number
 }
 
 export function isAnchorBlock(kind: BlockKind): boolean {
-  return kind === 'working' || kind === 'top'
+  return kind === 'working' || kind === 'cluster' || kind === 'top'
 }
 
 /**
@@ -57,8 +57,8 @@ export interface LadderEntry {
 
 /**
  * Monta a escada inteira a partir de uma carga de working set. Blocos que não
- * são feeder nem aquecimento (back-off, drop) acompanham o mesmo delta do
- * working, para uma redução proposital não virar carga de working.
+ * são feeder, aquecimento nem back-off (drop, amrap) acompanham o mesmo delta
+ * do working, para uma redução proposital não virar carga de working.
  */
 export function buildLadder(
   blocks: SetBlock[],
@@ -87,6 +87,13 @@ export function buildLadder(
 
     if (block.kind === 'warmup') {
       return { block, from, to: roundToStep(anchor * ratios.warmup, step) }
+    }
+
+    // Back-off é redução proposital, não repetição do working: na estreia entra
+    // como proporção da âncora, senão a sugestão sairia com a carga cheia de um
+    // bloco de 3 reps numa série de 12. Depois disso vale a carga real.
+    if (block.kind === 'backoff' && from === undefined) {
+      return { block, from, to: roundToStep(anchor * ratios.backoff, step) }
     }
 
     // Demais tipos: mantêm a própria carga, deslocada junto com o working.

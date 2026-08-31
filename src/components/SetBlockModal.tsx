@@ -8,6 +8,7 @@ import {
   type Target,
 } from '../db/db'
 import { BLOCK_LABELS, CARDIO_LABELS, parseNumber } from '../lib/format'
+import { isAnchorBlock } from '../lib/ladder'
 import { Modal } from './Modal'
 
 /** FC e calorias são resultado, não prescrição — não entram no alvo do bloco. */
@@ -50,6 +51,7 @@ const KIND_ORDER: BlockKind[] = [
   'warmup',
   'feeder',
   'working',
+  'cluster',
   'top',
   'backoff',
   'drop',
@@ -57,7 +59,9 @@ const KIND_ORDER: BlockKind[] = [
   'interval',
 ]
 
-const REST_PRESETS = [30, 60, 90, 120, 180]
+// 20s existe por causa do cluster, onde o respiro entre blocos é curto de
+// propósito — sem ele o tipo não daria para montar na mão.
+const REST_PRESETS = [20, 30, 60, 90, 120, 180]
 
 function minutesLabel(seconds: number): string {
   return seconds % 60 === 0 ? `${seconds / 60}min` : `${seconds}s`
@@ -187,7 +191,7 @@ export function SetBlockModal({
             ))}
           </div>
           <span className="hint">
-            {kind === 'working' || kind === 'top'
+            {isAnchorBlock(kind)
               ? 'Conta para a sugestão de aumento de carga.'
               : 'Não entra no critério de progressão.'}
           </span>
@@ -382,11 +386,13 @@ export function SetBlockModal({
                 >
                   Exato
                 </button>
-                {REST_PRESETS.filter((preset) => preset > rest).map((preset) => (
+                {REST_PRESETS.filter((preset) => preset > rest).map((preset, index) => (
                   <button
                     key={preset}
                     type="button"
-                    id={preset === REST_PRESETS[0] ? 'block-rest-max' : undefined}
+                    // O rótulo aponta para o primeiro chip que sobrou do filtro;
+                    // fixá-lo no primeiro preset deixaria o htmlFor pendurado.
+                    id={index === 0 ? 'block-rest-max' : undefined}
                     className={restMax === preset ? 'chip-option is-active' : 'chip-option'}
                     aria-pressed={restMax === preset}
                     onClick={() => setRestMax(preset)}
