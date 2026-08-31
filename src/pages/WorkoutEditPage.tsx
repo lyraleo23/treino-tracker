@@ -328,6 +328,16 @@ export function WorkoutEditPage() {
                 <button
                   type="button"
                   className="btn btn--block btn--primary"
+                  onClick={() => void handleAdd(pendingExercise, 'clusterFull')}
+                >
+                  Completo
+                  <span className="hint" style={{ marginLeft: 6 }}>
+                    aquecimento, 2 feeders, cluster e back-off
+                  </span>
+                </button>
+                <button
+                  type="button"
+                  className="btn btn--block"
                   onClick={() => void handleAdd(pendingExercise, 'feederWorking')}
                 >
                   Feeder + Working

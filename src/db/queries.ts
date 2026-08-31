@@ -262,7 +262,7 @@ export interface ProgressionSuggestion {
 
 /**
  * Lê a última sessão finalizada do exercício e decide se cabe sugerir algo.
- * Só working e top set entram no critério de subir/descer — a faixa baixa dos
+ * Só os blocos-âncora entram no critério de subir/descer — a faixa baixa dos
  * feeders é preparação, não medida de evolução.
  */
 export async function getProgressionSuggestion(
@@ -329,7 +329,7 @@ export async function getProgressionSuggestion(
       ...base,
       kind: 'descer',
       title: 'Sugerimos reduzir as cargas',
-      reason: `Na última sessão${origem} alguma série de working ficou abaixo do mínimo da faixa (${alcancado.join(', ')} reps).`,
+      reason: `Na última sessão${origem} alguma série que conta para a progressão ficou abaixo do mínimo da faixa (${alcancado.join(', ')} reps).`,
     }
   }
 
@@ -338,7 +338,7 @@ export async function getProgressionSuggestion(
       ...base,
       kind: 'subir',
       title: 'Sugerimos aumentar as cargas',
-      reason: `Na última sessão${origem} você fechou o topo da faixa em todas as séries de working (${alcancado.join(', ')} reps).`,
+      reason: `Na última sessão${origem} você fechou o topo da faixa em todas as séries que contam para a progressão (${alcancado.join(', ')} reps).`,
     }
   }
 
@@ -421,9 +421,13 @@ export async function getExerciseHistory(exerciseId: string): Promise<ExercisePo
   return [...bySession.values()].sort((a, b) => a.date - b.date)
 }
 
-/** Proporções da escada configuradas; sem configuração salva, os padrões. */
+/**
+ * Proporções da escada configuradas; sem configuração salva, os padrões. A
+ * mistura com o padrão não é enfeite: uma linha gravada antes de uma proporção
+ * nova existir volta sem ela, e `anchor * undefined` daria NaN na escada.
+ */
 export async function getLadderRatios(): Promise<LadderRatios> {
-  return (await db.settings.get('app'))?.ladder ?? DEFAULT_LADDER_RATIOS
+  return { ...DEFAULT_LADDER_RATIOS, ...(await db.settings.get('app'))?.ladder }
 }
 
 // --- Hidratação ---------------------------------------------------------

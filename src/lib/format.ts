@@ -175,6 +175,7 @@ export const BLOCK_LABELS: Record<BlockKind, string> = {
   warmup: 'Aquecimento',
   feeder: 'Feeder Set',
   working: 'Working Set',
+  cluster: 'Cluster-Set',
   top: 'Top Set',
   backoff: 'Back-off Set',
   drop: 'Drop Set',

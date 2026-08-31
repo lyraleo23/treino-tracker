@@ -4,6 +4,8 @@ import { useLiveQuery } from 'dexie-react-hooks'
 import Dexie from 'dexie'
 import { db, type SetBlock } from '../db/db'
 import {
+  BACKOFF_DEFAULT,
+  CLUSTER_DEFAULT,
   WARMUP_DEFAULT,
   addSetBlock,
   applyPreset,
@@ -94,14 +96,23 @@ export function WorkoutItemPage() {
                     itemId &&
                     void applyPreset(
                       itemId,
-                      exercise.kind === 'cardio' ? 'cardioLadder' : 'feederWorking',
+                      exercise.kind === 'cardio' ? 'cardioLadder' : 'clusterFull',
                     )
                   }
                 >
                   {exercise.kind === 'cardio'
                     ? 'Usar escada de 4 trechos'
-                    : 'Usar modelo Feeder + Working'}
+                    : 'Usar modelo completo (aquecimento → back-off)'}
                 </button>
+                {exercise.kind !== 'cardio' && (
+                  <button
+                    type="button"
+                    className="btn"
+                    onClick={() => itemId && void applyPreset(itemId, 'feederWorking')}
+                  >
+                    Usar modelo Feeder + Working
+                  </button>
+                )}
                 <button
                   type="button"
                   className="btn"
@@ -228,6 +239,20 @@ export function WorkoutItemPage() {
                   >
                     Working set
                   </button>
+                  <button
+                    type="button"
+                    className="btn btn--block"
+                    onClick={() => setCreating(CLUSTER_DEFAULT)}
+                  >
+                    Cluster-set
+                  </button>
+                  <button
+                    type="button"
+                    className="btn btn--block"
+                    onClick={() => setCreating(BACKOFF_DEFAULT)}
+                  >
+                    Back-off
+                  </button>
                 </>
               )}
               <button
@@ -237,6 +262,15 @@ export function WorkoutItemPage() {
               >
                 Acrescentar modelo Feeder + Working
               </button>
+              {exercise.kind !== 'cardio' && (
+                <button
+                  type="button"
+                  className="btn btn--block btn--ghost"
+                  onClick={() => itemId && void applyPreset(itemId, 'clusterFull')}
+                >
+                  Acrescentar modelo Cluster + Back-off
+                </button>
+              )}
             </div>
           </>
         )}

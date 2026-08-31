@@ -28,18 +28,22 @@ export const DEFAULT_WEIGHT_STEP = 2.5
 
 /**
  * Proporções da escada de carga, todas relativas ao working set (100%). Os
- * feeders são interpolados entre `feederMin` e `feederMax`.
+ * feeders são interpolados entre `feederMin` e `feederMax`. O back-off é a
+ * única que aponta para baixo depois da âncora: vale só na estreia do bloco,
+ * porque dali em diante ele carrega a própria carga.
  */
 export interface LadderRatios {
   warmup: number
   feederMin: number
   feederMax: number
+  backoff: number
 }
 
 export const DEFAULT_LADDER_RATIOS: LadderRatios = {
   warmup: 0.5,
   feederMin: 0.7,
   feederMax: 0.85,
+  backoff: 0.7,
 }
 
 export interface HydrationSettings {
@@ -315,14 +319,16 @@ export interface WorkoutItem {
 }
 
 /**
- * Tipos de bloco de séries. Só `working` e `top` valem como critério de
- * progressão de carga — a faixa de aquecimento e feeder existe para preparar,
+ * Tipos de bloco de séries. Só `working`, `cluster` e `top` valem como critério
+ * de progressão de carga — a faixa de aquecimento e feeder existe para preparar,
  * não para medir evolução.
  */
 export type BlockKind =
   | 'warmup'
   | 'feeder'
   | 'working'
+  /** Working set fatiado: blocos curtos com um respiro entre eles. */
+  | 'cluster'
   | 'top'
   | 'backoff'
   | 'drop'
