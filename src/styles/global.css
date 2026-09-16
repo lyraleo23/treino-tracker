@@ -363,6 +363,12 @@ h3 {
   color: var(--accent);
 }
 
+/* Chip de um dígito só (1, 2, 3...) nasceria estreito demais para o dedo. */
+.chip-grid--wide .chip-option {
+  min-width: 44px;
+  text-align: center;
+}
+
 /* --- Blocos de séries ------------------------------------------------ */
 
 .block {

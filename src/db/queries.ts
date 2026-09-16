@@ -1,20 +1,23 @@
 import Dexie from 'dexie'
 import {
+  clampSessionsToIncrease,
   db,
   DEFAULT_HYDRATION,
   DEFAULT_LADDER_RATIOS,
   DEFAULT_NUTRITION,
+  DEFAULT_PROGRESSION,
   type DrinkLog,
   type LadderRatios,
   type MealLog,
   type MealLogItem,
   type NutritionSettings,
+  type ProgressionSettings,
   type SetBlock,
   type SetLog,
   type Target,
 } from './db'
 import { anchorWeight, blockRole, isAnchorBlock, ladderIsBroken } from '../lib/ladder'
-import { startOfDay } from '../lib/format'
+import { formatNumber, startOfDay } from '../lib/format'
 
 /**
  * Última série registrada para o exercício, considerando todo o histórico —
@@ -147,22 +150,12 @@ export interface PreviousExecution {
   byRole: Map<string, RoleHistory>
 }
 
-export async function getPreviousExecution(
-  exerciseId: string,
+/** Monta uma execução a partir das séries de uma única sessão, já ordenadas. */
+async function buildExecution(
+  sessionLogs: SetLog[],
   currentWorkoutId: string,
-  excludeSessionId?: string,
 ): Promise<PreviousExecution | undefined> {
-  const logs = await db.setLogs
-    .where('[exerciseId+completedAt]')
-    .between([exerciseId, Dexie.minKey], [exerciseId, Dexie.maxKey])
-    .reverse()
-    .toArray()
-
-  const relevant = excludeSessionId
-    ? logs.filter((log) => log.sessionId !== excludeSessionId)
-    : logs
-
-  const mostRecent = relevant[0]
+  const mostRecent = sessionLogs[0]
   if (!mostRecent) return undefined
 
   const session = await db.sessions.get(mostRecent.sessionId)
@@ -170,10 +163,8 @@ export async function getPreviousExecution(
 
   // Só o item daquela ocasião interessa: é dele que saem os blocos com o tipo e
   // a ordem, e são eles que definem o papel de cada um.
-  const fromSession = relevant.filter(
-    (log) =>
-      log.sessionId === mostRecent.sessionId &&
-      log.workoutItemId === mostRecent.workoutItemId,
+  const fromSession = sessionLogs.filter(
+    (log) => log.workoutItemId === mostRecent.workoutItemId,
   )
 
   const blocks = await db.setBlocks
@@ -210,6 +201,55 @@ export async function getPreviousExecution(
     sameWorkout: session.workoutId === currentWorkoutId,
     byRole,
   }
+}
+
+/**
+ * As `limit` execuções mais recentes do exercício, da mais nova para a mais
+ * antiga. Uma sessão descartada no meio do caminho (sem sessão gravada, ou com
+ * blocos que não casam mais) simplesmente não entra na lista.
+ */
+export async function getRecentExecutions(
+  exerciseId: string,
+  currentWorkoutId: string,
+  limit: number,
+  excludeSessionId?: string,
+): Promise<PreviousExecution[]> {
+  if (limit <= 0) return []
+
+  const logs = await db.setLogs
+    .where('[exerciseId+completedAt]')
+    .between([exerciseId, Dexie.minKey], [exerciseId, Dexie.maxKey])
+    .reverse()
+    .toArray()
+
+  const relevant = excludeSessionId
+    ? logs.filter((log) => log.sessionId !== excludeSessionId)
+    : logs
+
+  // Em ordem decrescente, as primeiras `limit` sessões distintas são as mais
+  // recentes; séries de uma sessão já aceita continuam entrando nela.
+  const bySession = new Map<string, SetLog[]>()
+  for (const log of relevant) {
+    const existing = bySession.get(log.sessionId)
+    if (existing) existing.push(log)
+    else if (bySession.size < limit) bySession.set(log.sessionId, [log])
+  }
+
+  const executions = await Promise.all(
+    [...bySession.values()].map((sessionLogs) =>
+      buildExecution(sessionLogs, currentWorkoutId),
+    ),
+  )
+
+  return executions.filter((execution): execution is PreviousExecution => !!execution)
+}
+
+export async function getPreviousExecution(
+  exerciseId: string,
+  currentWorkoutId: string,
+  excludeSessionId?: string,
+): Promise<PreviousExecution | undefined> {
+  return (await getRecentExecutions(exerciseId, currentWorkoutId, 1, excludeSessionId))[0]
 }
 
 /** Mapa exerciseId → execução anterior, para montar a sessão de uma vez. */
@@ -260,27 +300,30 @@ export interface ProgressionSuggestion {
   previous: Map<string, number | undefined>
 }
 
+/** O que uma execução passada diz sobre a carga daquele dia. */
+interface ExecutionReading {
+  /** blockId → carga usada naquela sessão. */
+  previous: Map<string, number | undefined>
+  /** Carga de referência (working/top); undefined quando não houve nenhuma. */
+  anchor?: number
+  /** Repetições das séries que contam para a progressão, na ordem. */
+  reps: number[]
+  /** Todas as séries previstas foram feitas no topo da faixa. */
+  allAtTop: boolean
+  /** Alguma série ficou abaixo do mínimo da faixa. */
+  belowMin: boolean
+}
+
 /**
- * Lê a última sessão finalizada do exercício e decide se cabe sugerir algo.
- * Só os blocos-âncora entram no critério de subir/descer — a faixa baixa dos
- * feeders é preparação, não medida de evolução.
+ * Lê uma execução passada com os olhos dos blocos de hoje. Devolve `null`
+ * quando algum bloco-âncora não tem faixa de repetições (alvo de tempo ou
+ * cardio): aí não há topo a bater e o exercício fica fora da regra.
  */
-export async function getProgressionSuggestion(
-  exerciseId: string,
+function readExecution(
   blocks: SetBlock[],
-  currentWorkoutId: string,
-  excludeSessionId: string,
-): Promise<ProgressionSuggestion | null> {
-  const anchorBlocks = blocks.filter((block) => isAnchorBlock(block.kind))
-  if (anchorBlocks.length === 0) return null
-
-  const execution = await getPreviousExecution(
-    exerciseId,
-    currentWorkoutId,
-    excludeSessionId,
-  )
-  if (!execution?.finishedAt) return null
-
+  anchorBlocks: SetBlock[],
+  execution: PreviousExecution,
+): ExecutionReading | null {
   // Carga de referência de cada bloco naquela sessão: a série mais pesada do
   // bloco de mesmo papel. É o casamento por papel — e não por id — que faz a
   // escada atravessar treinos diferentes.
@@ -290,12 +333,9 @@ export async function getProgressionSuggestion(
     previous.set(block.id, weight !== undefined && weight > 0 ? weight : undefined)
   }
 
-  const anchor = anchorWeight(blocks, previous)
-  if (anchor === undefined) return null
-
-  const alcancado: number[] = []
-  let todosNoTopo = true
-  let abaixoDoMinimo = false
+  const reps: number[] = []
+  let allAtTop = true
+  let belowMin = false
 
   for (const block of anchorBlocks) {
     const top = topReps(block.target)
@@ -309,36 +349,93 @@ export async function getProgressionSuggestion(
     // Treino incompleto não é progressão nem reprovação de carga. O planejado
     // que vale é o daquela ocasião: o mesmo working pode ser 1 série num treino
     // e 3 noutro, e comparar com o de hoje reprovaria a sessão à toa.
-    if (blockLogs.length < (history?.plannedSets ?? block.sets)) todosNoTopo = false
+    if (blockLogs.length < (history?.plannedSets ?? block.sets)) allAtTop = false
 
     for (const log of blockLogs) {
-      const reps = log.reps ?? 0
-      alcancado.push(reps)
-      if (reps < top) todosNoTopo = false
-      if (reps < floor) abaixoDoMinimo = true
+      const feitas = log.reps ?? 0
+      reps.push(feitas)
+      if (feitas < top) allAtTop = false
+      if (feitas < floor) belowMin = true
     }
   }
+
+  return { previous, anchor: anchorWeight(blocks, previous), reps, allAtTop, belowMin }
+}
+
+/**
+ * Decide se cabe sugerir algo para o exercício. Só os blocos-âncora entram no
+ * critério de subir/descer — a faixa baixa dos feeders é preparação, não medida
+ * de evolução.
+ *
+ * Reduzir e endireitar a escada olham só a última sessão: carga excessiva ou
+ * escada torta são problemas do próximo treino. **Subir** é que conta sessões:
+ * `sessionsToIncrease` diz quantas execuções seguidas, na mesma carga, precisam
+ * fechar o topo da faixa antes de o aumento ser oferecido. Trocar a carga
+ * recomeça a contagem — a série de duas sessões a 40 kg não vale como primeira
+ * sessão a 42,5 kg.
+ */
+export async function getProgressionSuggestion(
+  exerciseId: string,
+  blocks: SetBlock[],
+  currentWorkoutId: string,
+  excludeSessionId: string,
+  progression: ProgressionSettings = DEFAULT_PROGRESSION,
+): Promise<ProgressionSuggestion | null> {
+  const anchorBlocks = blocks.filter((block) => isAnchorBlock(block.kind))
+  if (anchorBlocks.length === 0) return null
+
+  const exigidas = clampSessionsToIncrease(progression.sessionsToIncrease)
+  const executions = await getRecentExecutions(
+    exerciseId,
+    currentWorkoutId,
+    exigidas,
+    excludeSessionId,
+  )
+
+  const execution = executions[0]
+  if (!execution?.finishedAt) return null
+
+  const reading = readExecution(blocks, anchorBlocks, execution)
+  if (!reading) return null
+
+  const { previous, anchor } = reading
+  if (anchor === undefined) return null
 
   // Vindo de outro treino, dizer qual evita a sugestão parecer saída do nada.
   const origem = execution.sameWorkout ? '' : ` (${execution.workoutName})`
   const base = { exerciseId, sessionId: execution.sessionId, anchor, previous }
 
   // Abaixo do mínimo pesa mais: carga excessiva é problema imediato.
-  if (abaixoDoMinimo) {
+  if (reading.belowMin) {
     return {
       ...base,
       kind: 'descer',
       title: 'Sugerimos reduzir as cargas',
-      reason: `Na última sessão${origem} alguma série que conta para a progressão ficou abaixo do mínimo da faixa (${alcancado.join(', ')} reps).`,
+      reason: `Na última sessão${origem} alguma série que conta para a progressão ficou abaixo do mínimo da faixa (${reading.reps.join(', ')} reps).`,
     }
   }
 
-  if (todosNoTopo) {
-    return {
-      ...base,
-      kind: 'subir',
-      title: 'Sugerimos aumentar as cargas',
-      reason: `Na última sessão${origem} você fechou o topo da faixa em todas as séries que contam para a progressão (${alcancado.join(', ')} reps).`,
+  if (reading.allAtTop) {
+    // A contagem anda para trás enquanto a sessão fechar o topo na mesma carga;
+    // a primeira que falhar (ou a carga mudar) encerra a sequência.
+    let seguidas = 0
+    for (const past of executions) {
+      if (!past.finishedAt) break
+      const passada = past === execution ? reading : readExecution(blocks, anchorBlocks, past)
+      if (!passada?.allAtTop || passada.anchor !== anchor) break
+      seguidas += 1
+    }
+
+    if (seguidas >= exigidas) {
+      return {
+        ...base,
+        kind: 'subir',
+        title: 'Sugerimos aumentar as cargas',
+        reason:
+          exigidas === 1
+            ? `Na última sessão${origem} você fechou o topo da faixa em todas as séries que contam para a progressão (${reading.reps.join(', ')} reps).`
+            : `Você fechou o topo da faixa em todas as séries que contam para a progressão nas últimas ${exigidas} sessões, sempre com ${formatNumber(anchor)} kg (${reading.reps.join(', ')} reps na última${origem}).`,
+      }
     }
   }
 
@@ -428,6 +525,16 @@ export async function getExerciseHistory(exerciseId: string): Promise<ExercisePo
  */
 export async function getLadderRatios(): Promise<LadderRatios> {
   return { ...DEFAULT_LADDER_RATIOS, ...(await db.settings.get('app'))?.ladder }
+}
+
+/** Regra de progressão configurada; sem configuração salva, o padrão. */
+export async function getProgressionSettings(): Promise<ProgressionSettings> {
+  const saved = (await db.settings.get('app'))?.progression
+  return {
+    sessionsToIncrease: clampSessionsToIncrease(
+      saved?.sessionsToIncrease ?? DEFAULT_PROGRESSION.sessionsToIncrease,
+    ),
+  }
 }
 
 // --- Hidratação ---------------------------------------------------------

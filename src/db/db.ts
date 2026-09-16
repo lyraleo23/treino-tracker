@@ -46,6 +46,27 @@ export const DEFAULT_LADDER_RATIOS: LadderRatios = {
   backoff: 0.7,
 }
 
+/**
+ * Regra de progressão de carga: quantas sessões **seguidas** fechando o topo da
+ * faixa de repetições antes de sugerir subir o peso. Com 1, uma sessão cheia já
+ * pede aumento na seguinte; com 2 ou mais, é preciso repetir o desempenho na
+ * mesma carga antes de a sugestão aparecer.
+ */
+export interface ProgressionSettings {
+  sessionsToIncrease: number
+}
+
+export const DEFAULT_PROGRESSION: ProgressionSettings = { sessionsToIncrease: 1 }
+
+/** Teto do seletor: cinco sessões seguidas já é conservador o bastante. */
+export const MAX_SESSIONS_TO_INCREASE = 5
+
+/** Mantém o valor dentro do seletor, mesmo vindo de um backup estranho. */
+export function clampSessionsToIncrease(value: number): number {
+  if (!Number.isFinite(value)) return DEFAULT_PROGRESSION.sessionsToIncrease
+  return Math.min(MAX_SESSIONS_TO_INCREASE, Math.max(1, Math.round(value)))
+}
+
 export interface HydrationSettings {
   goalMl: number
 }
@@ -66,6 +87,8 @@ export const DEFAULT_NUTRITION: NutritionSettings = { kcalMin: 2201, kcalMax: 24
 export interface Settings {
   id: 'app'
   ladder: LadderRatios
+  /** Ausente na linha gravada antes da regra de progressão existir. */
+  progression?: ProgressionSettings
   /** Ausente na linha gravada antes da hidratação existir. */
   hydration?: HydrationSettings
   /** Ausente na linha gravada antes da nutrição existir. */
