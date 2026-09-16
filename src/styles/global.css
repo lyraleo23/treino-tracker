@@ -369,6 +369,13 @@ h3 {
   text-align: center;
 }
 
+/* Segunda metade de um card: separa duas medidas sem virar dois cards. */
+.card__split {
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid var(--border);
+}
+
 /* --- Blocos de séries ------------------------------------------------ */
 
 .block {

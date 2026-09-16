@@ -55,3 +55,21 @@ export function sumNutrition(items: ComputedNutrition[]): ComputedNutrition {
     { calories: 0, proteinG: 0, carbsG: 0, fatG: 0, known: true },
   )
 }
+
+/** Onde um total caiu em relação à meta. */
+export interface GoalGap {
+  status: 'abaixo' | 'dentro' | 'acima'
+  /** Quanto falta para o mínimo, ou quanto passou do teto; 0 quando dentro. */
+  amount: number
+}
+
+/**
+ * Serve às duas metas do dia porque a diferença entre elas é só o teto: as
+ * calorias têm faixa (passar é estourar), a proteína é um piso (passar é bom),
+ * e um piso é uma faixa sem `max`.
+ */
+export function goalGap(total: number, min: number, max?: number): GoalGap {
+  if (total < min) return { status: 'abaixo', amount: min - total }
+  if (max !== undefined && total > max) return { status: 'acima', amount: total - max }
+  return { status: 'dentro', amount: 0 }
+}

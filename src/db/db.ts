@@ -73,12 +73,23 @@ export interface HydrationSettings {
 
 export const DEFAULT_HYDRATION: HydrationSettings = { goalMl: 2500 }
 
+/**
+ * As metas do dia. A de calorias é uma faixa — passar do teto é estourar; a de
+ * proteína é um piso: bater é o mínimo, passar é bom. Por isso as duas não se
+ * misturam num julgamento só, e `proteinG` pode faltar numa linha gravada antes
+ * dela existir.
+ */
 export interface NutritionSettings {
   kcalMin: number
   kcalMax: number
+  proteinG?: number
 }
 
-export const DEFAULT_NUTRITION: NutritionSettings = { kcalMin: 2201, kcalMax: 2400 }
+export const DEFAULT_NUTRITION: Required<NutritionSettings> = {
+  kcalMin: 2201,
+  kcalMax: 2400,
+  proteinG: 150,
+}
 
 /**
  * Linha única de configuração do app — `id` é sempre 'app'. Quando ela não
@@ -258,6 +269,8 @@ export interface NutritionDay {
   day: number
   kcalMin: number
   kcalMax: number
+  /** Ausente nos dias gravados antes da meta de proteína existir. */
+  proteinG?: number
 }
 
 /**

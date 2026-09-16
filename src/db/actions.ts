@@ -304,13 +304,21 @@ export async function deleteShortcut(id: string): Promise<void> {
 
 // --- Nutrição -------------------------------------------------------------
 
-export async function saveNutritionGoal(kcalMin: number, kcalMax: number): Promise<void> {
+export async function saveNutritionGoal(
+  kcalMin: number,
+  kcalMax: number,
+  proteinG: number,
+): Promise<void> {
   const current = await db.settings.get('app')
   await db.settings.put({
     ...current,
     id: 'app',
     ladder: current?.ladder ?? DEFAULT_LADDER_RATIOS,
-    nutrition: { kcalMin: Math.max(1, Math.round(kcalMin)), kcalMax: Math.max(1, Math.round(kcalMax)) },
+    nutrition: {
+      kcalMin: Math.max(1, Math.round(kcalMin)),
+      kcalMax: Math.max(1, Math.round(kcalMax)),
+      proteinG: Math.max(1, Math.round(proteinG)),
+    },
   })
 }
 
@@ -318,8 +326,8 @@ type LoggedItemInput = { foodId: string; quantity: number; unit: string }
 
 /**
  * Registra uma refeição. Congela duas coisas: a nutrição de cada item pelo
- * catálogo vigente no momento e a faixa de kcal do dia no `NutritionDay` —
- * sem isso, editar um alimento ou a meta depois reescreveria dias já julgados.
+ * catálogo vigente no momento e as metas do dia no `NutritionDay` — sem isso,
+ * editar um alimento ou a meta depois reescreveria dias já julgados.
  */
 export async function logMeal(data: {
   mealId: string
@@ -337,7 +345,12 @@ export async function logMeal(data: {
       if (!(await db.nutritionDays.get(day))) {
         const settings = await db.settings.get('app')
         const goal = settings?.nutrition ?? DEFAULT_NUTRITION
-        await db.nutritionDays.add({ day, kcalMin: goal.kcalMin, kcalMax: goal.kcalMax })
+        await db.nutritionDays.add({
+          day,
+          kcalMin: goal.kcalMin,
+          kcalMax: goal.kcalMax,
+          proteinG: goal.proteinG ?? DEFAULT_NUTRITION.proteinG,
+        })
       }
 
       const mealLogId = newId()
