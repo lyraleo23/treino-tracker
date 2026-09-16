@@ -10,7 +10,16 @@ import { DrinkLogModal } from '../components/DrinkLogModal'
 import { MealLogEditModal } from '../components/MealLogEditModal'
 import { NutritionGoalModal } from '../components/NutritionGoalModal'
 import { CheckIcon } from '../components/icons'
-import { formatKcal, formatMl, formatNumber, formatTime, formatWeekday, startOfDay } from '../lib/format'
+import {
+  formatGrams,
+  formatKcal,
+  formatMl,
+  formatNumber,
+  formatTime,
+  formatWeekday,
+  startOfDay,
+} from '../lib/format'
+import { goalGap } from '../lib/nutrition'
 
 export function HealthPage() {
   const navigate = useNavigate()
@@ -66,13 +75,25 @@ export function HealthPage() {
     100,
     diaNutricao.kcalMax > 0 ? Math.round((diaNutricao.totalCalories / diaNutricao.kcalMax) * 100) : 0,
   )
+  const progressoProteina = Math.min(
+    100,
+    diaNutricao.proteinGoalG > 0
+      ? Math.round((diaNutricao.totalProteinG / diaNutricao.proteinGoalG) * 100)
+      : 0,
+  )
+  const faltaKcal = goalGap(diaNutricao.totalCalories, diaNutricao.kcalMin, diaNutricao.kcalMax)
+  const faltaProteina = goalGap(diaNutricao.totalProteinG, diaNutricao.proteinGoalG)
+
   const mealById = new Map(meals.map((m) => [m.id, m]))
   const kcalByMeal = new Map<string, number>()
+  const proteinByMeal = new Map<string, number>()
   const countByMeal = new Map<string, number>()
   for (const log of diaNutricao.logs) {
     const items = diaNutricao.itemsByLog.get(log.id) ?? []
     const kcal = items.reduce((sum, item) => sum + item.calories, 0)
+    const protein = items.reduce((sum, item) => sum + item.proteinG, 0)
     kcalByMeal.set(log.mealId, (kcalByMeal.get(log.mealId) ?? 0) + kcal)
+    proteinByMeal.set(log.mealId, (proteinByMeal.get(log.mealId) ?? 0) + protein)
     countByMeal.set(log.mealId, (countByMeal.get(log.mealId) ?? 0) + 1)
   }
 
@@ -224,9 +245,14 @@ export function HealthPage() {
                 {formatKcal(diaNutricao.totalCalories)} de {formatNumber(diaNutricao.kcalMin, 0)}–
                 {formatKcal(diaNutricao.kcalMax)}
               </div>
-              {diaNutricao.hasUnknown && (
-                <div className="card__meta">alguns itens sem nutrição conhecida</div>
-              )}
+              <div className="card__meta">
+                {faltaKcal.status === 'abaixo'
+                  ? `faltam ${formatKcal(faltaKcal.amount)}`
+                  : faltaKcal.status === 'acima'
+                    ? `${formatKcal(faltaKcal.amount)} acima do teto`
+                    : 'dentro da faixa'}
+                {diaNutricao.hasUnknown && ' · alguns itens sem nutrição conhecida'}
+              </div>
             </div>
             {diaNutricao.hit && (
               <span className="chip chip--accent">
@@ -244,6 +270,40 @@ export function HealthPage() {
               style={{ width: `${progressoKcal}%` }}
             />
           </div>
+
+          {/* Proteína é meta à parte, não um pedaço da de calorias: piso próprio,
+              barra própria e um "batida" que não depende do kcal do dia. */}
+          <div className="card__split">
+            <div className="row row--between">
+              <div style={{ minWidth: 0 }}>
+                {/* O rótulo é necessário aqui e não no bloco de cima: "kcal"
+                    já diz do que se trata, "g" sozinho não diria. */}
+                <div className="card__title">
+                  Proteína: {formatGrams(diaNutricao.totalProteinG)} de{' '}
+                  {formatGrams(diaNutricao.proteinGoalG)}
+                </div>
+                <div className="card__meta">
+                  {faltaProteina.status === 'abaixo'
+                    ? `faltam ${formatGrams(faltaProteina.amount)}`
+                    : 'piso alcançado'}
+                </div>
+              </div>
+              {diaNutricao.proteinHit && (
+                <span className="chip chip--accent">
+                  <CheckIcon width={14} height={14} /> meta batida
+                </span>
+              )}
+            </div>
+
+            <div className="progress" style={{ marginTop: 10 }}>
+              <div
+                className={
+                  diaNutricao.proteinHit ? 'progress__fill is-done' : 'progress__fill'
+                }
+                style={{ width: `${progressoProteina}%` }}
+              />
+            </div>
+          </div>
         </div>
 
         <h2 className="section-title">Refeições</h2>
@@ -251,6 +311,7 @@ export function HealthPage() {
           {meals.map((meal) => {
             const count = countByMeal.get(meal.id) ?? 0
             const kcal = kcalByMeal.get(meal.id) ?? 0
+            const protein = proteinByMeal.get(meal.id) ?? 0
             return (
               <button
                 key={meal.id}
@@ -263,7 +324,7 @@ export function HealthPage() {
                   <div className="list__meta">
                     {count === 0
                       ? 'Toque para registrar'
-                      : `${count} ${count === 1 ? 'registro' : 'registros'} · ${formatKcal(kcal)}`}
+                      : `${count} ${count === 1 ? 'registro' : 'registros'} · ${formatKcal(kcal)} · ${formatGrams(protein)} prot`}
                   </div>
                 </div>
                 <span className="chevron">›</span>
@@ -280,6 +341,7 @@ export function HealthPage() {
             {diaNutricao.logs.map((log) => {
               const items = diaNutricao.itemsByLog.get(log.id) ?? []
               const kcal = items.reduce((sum, item) => sum + item.calories, 0)
+              const protein = items.reduce((sum, item) => sum + item.proteinG, 0)
               return (
                 <button
                   key={log.id}
@@ -292,7 +354,7 @@ export function HealthPage() {
                       {mealById.get(log.mealId)?.name ?? 'Refeição removida'}
                     </div>
                     <div className="list__meta">
-                      {formatTime(log.at)} · {formatKcal(kcal)}
+                      {formatTime(log.at)} · {formatKcal(kcal)} · {formatGrams(protein)} prot
                     </div>
                   </div>
                   <span className="chevron">›</span>
@@ -346,6 +408,7 @@ export function HealthPage() {
         <NutritionGoalModal
           kcalMin={diaNutricao.kcalMin}
           kcalMax={diaNutricao.kcalMax}
+          proteinG={diaNutricao.proteinGoalG}
           onClose={() => setGoalOpen(false)}
         />
       )}

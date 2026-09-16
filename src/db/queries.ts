@@ -594,9 +594,18 @@ export async function getHydrationHistory(days: number): Promise<DayHydration[]>
 
 // --- Nutrição ------------------------------------------------------------
 
-/** Meta corrente; sem configuração salva, o padrão. */
-export async function getNutritionGoal(): Promise<NutritionSettings> {
-  return (await db.settings.get('app'))?.nutrition ?? DEFAULT_NUTRITION
+/**
+ * Metas correntes; sem configuração salva, os padrões. O `proteinG` é resolvido
+ * aqui porque uma linha gravada antes da meta de proteína existir volta sem ele
+ * — e quem lê espera as três metas preenchidas.
+ */
+export async function getNutritionGoal(): Promise<Required<NutritionSettings>> {
+  const saved = (await db.settings.get('app'))?.nutrition
+  return {
+    kcalMin: saved?.kcalMin ?? DEFAULT_NUTRITION.kcalMin,
+    kcalMax: saved?.kcalMax ?? DEFAULT_NUTRITION.kcalMax,
+    proteinG: saved?.proteinG ?? DEFAULT_NUTRITION.proteinG,
+  }
 }
 
 export interface DayNutrition {
@@ -605,18 +614,25 @@ export interface DayNutrition {
   itemsByLog: Map<string, MealLogItem[]>
   kcalMin: number
   kcalMax: number
+  /** Piso de proteína do dia, em gramas. */
+  proteinGoalG: number
   totalCalories: number
   totalProteinG: number
   totalCarbsG: number
   totalFatG: number
+  /** Calorias dentro da faixa do dia. */
   hit: boolean
   over: boolean
+  /** Piso de proteína alcançado. Independe de `hit`: são metas separadas. */
+  proteinHit: boolean
   hasUnknown: boolean
 }
 
 /**
- * O dia inteiro. A faixa de kcal vem do registro do dia quando ele existe —
- * é a que valia então; um dia ainda sem lançamento cai na meta corrente.
+ * O dia inteiro. As metas vêm do registro do dia quando ele existe — são as que
+ * valiam então; um dia ainda sem lançamento cai nas metas correntes. Um dia
+ * gravado antes da meta de proteína existir também cai na corrente: é o melhor
+ * palpite disponível, e ninguém perseguia um piso que ainda não havia.
  */
 export async function getDayNutrition(day: number): Promise<DayNutrition> {
   const [logs, items, saved, current] = await Promise.all([
@@ -629,6 +645,7 @@ export async function getDayNutrition(day: number): Promise<DayNutrition> {
 
   const kcalMin = saved?.kcalMin ?? current.kcalMin
   const kcalMax = saved?.kcalMax ?? current.kcalMax
+  const proteinGoalG = saved?.proteinG ?? current.proteinG
 
   const itemsByLog = new Map<string, MealLogItem[]>()
   for (const item of items) {
@@ -648,12 +665,14 @@ export async function getDayNutrition(day: number): Promise<DayNutrition> {
     itemsByLog,
     kcalMin,
     kcalMax,
+    proteinGoalG,
     totalCalories,
     totalProteinG,
     totalCarbsG,
     totalFatG,
     hit: totalCalories >= kcalMin && totalCalories <= kcalMax,
     over: totalCalories > kcalMax,
+    proteinHit: totalProteinG >= proteinGoalG,
     hasUnknown: items.some((item) => !item.nutritionKnown),
   }
 }

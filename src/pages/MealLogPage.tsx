@@ -7,8 +7,16 @@ import { PageHeader } from '../components/PageHeader'
 import { EmptyState } from '../components/EmptyState'
 import { FoodPicker } from '../components/FoodPicker'
 import { TrashIcon } from '../components/icons'
-import { computeItemNutrition, sumNutrition } from '../lib/nutrition'
-import { DIET_CATEGORY_LABELS, formatGrams, formatKcal, parseNumber } from '../lib/format'
+import { getDayNutrition } from '../db/queries'
+import { computeItemNutrition, goalGap, sumNutrition } from '../lib/nutrition'
+import {
+  DIET_CATEGORY_LABELS,
+  formatGrams,
+  formatKcal,
+  formatNumber,
+  parseNumber,
+  startOfDay,
+} from '../lib/format'
 import { VEGETABLES_UNLIMITED } from '../db/dietSeed'
 
 type Mode = 'plan' | 'free'
@@ -49,10 +57,13 @@ export function MealLogPage() {
 
   const data = useLiveQuery(async () => {
     if (!mealId) return undefined
-    const [meal, options, foods] = await Promise.all([
+    const [meal, options, foods, dia] = await Promise.all([
       db.dietMeals.get(mealId),
       db.dietOptions.where('mealId').equals(mealId).sortBy('order'),
       db.foods.toArray(),
+      // O dia de hoje entra para o resumo poder dizer como a meta fica depois
+      // de salvar — a pergunta que se faz olhando o prato, não depois.
+      getDayNutrition(startOfDay(Date.now())),
     ])
     if (!meal) return undefined
 
@@ -64,12 +75,12 @@ export function MealLogPage() {
     }
 
     const foodById = new Map(foods.map((f) => [f.id, f]))
-    return { meal, byCategory, foodById }
+    return { meal, byCategory, foodById, dia }
   }, [mealId])
 
   if (!data) return <div className="page" />
 
-  const { meal, byCategory, foodById } = data
+  const { meal, byCategory, foodById, dia } = data
   const categories = Object.keys(meal.selectionRules)
   const allChosen = categories.every((category) => !!selected[category])
 
@@ -106,6 +117,13 @@ export function MealLogPage() {
   )
   const summary = sumNutrition([...computedByKey.values()])
   const hasEntries = rows.some((row) => (parsedByKey.get(row.key) ?? 0) > 0)
+
+  // Como o dia fica se este prato for salvo. É projeção, não registro: nada
+  // disso toca o banco enquanto o Salvar não for tocado.
+  const projetadoKcal = dia.totalCalories + summary.calories
+  const projetadaProteina = dia.totalProteinG + summary.proteinG
+  const faltaKcal = goalGap(projetadoKcal, dia.kcalMin, dia.kcalMax)
+  const faltaProteina = goalGap(projetadaProteina, dia.proteinGoalG)
 
   const showVegetables = meal.optionalSides?.includes('vegetables_unlimited')
 
@@ -267,6 +285,31 @@ export function MealLogPage() {
               {!summary.known && (
                 <div className="card__meta">Alguns itens não têm nutrição conhecida.</div>
               )}
+
+              <div className="card__split">
+                <div className="card__meta" style={{ marginBottom: 4 }}>
+                  No dia, se salvar
+                </div>
+                {/* A unidade aparece uma vez por linha, na meta: repeti-la em
+                    cada número faria "kcal" três vezes na mesma frase. */}
+                <div className="card__meta">
+                  Calorias: {formatNumber(dia.totalCalories, 0)} →{' '}
+                  <strong>{formatNumber(projetadoKcal, 0)}</strong> de{' '}
+                  {formatNumber(dia.kcalMin, 0)}–{formatKcal(dia.kcalMax)}
+                  {faltaKcal.status === 'abaixo' &&
+                    ` · faltam ${formatNumber(faltaKcal.amount, 0)}`}
+                  {faltaKcal.status === 'acima' &&
+                    ` · ${formatNumber(faltaKcal.amount, 0)} acima do teto`}
+                </div>
+                <div className="card__meta">
+                  Proteína: {formatNumber(dia.totalProteinG)} →{' '}
+                  <strong>{formatNumber(projetadaProteina)}</strong> de{' '}
+                  {formatGrams(dia.proteinGoalG)}
+                  {faltaProteina.status === 'abaixo'
+                    ? ` · faltam ${formatNumber(faltaProteina.amount)}`
+                    : ' · piso alcançado'}
+                </div>
+              </div>
             </div>
 
             <button
