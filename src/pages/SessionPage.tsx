@@ -24,6 +24,7 @@ import {
   getLadderRatios,
   getLastSetsForExercises,
   getPreviousExecutions,
+  getProgressionSettings,
   getProgressionSuggestion,
   type ProgressionSuggestion,
 } from '../db/queries'
@@ -194,6 +195,10 @@ export function SessionPage() {
     )
     const lastByExercise = await getLastSetsForExercises(exerciseIds, sessionId)
 
+    // A regra de progressão é a mesma para todos os exercícios: lida uma vez só,
+    // fora do laço.
+    const progression = await getProgressionSettings()
+
     const suggestions = new Map<string, ProgressionSuggestion>()
     for (const row of rows) {
       const suggestion = await getProgressionSuggestion(
@@ -201,6 +206,7 @@ export function SessionPage() {
         row.blocks,
         session.workoutId,
         sessionId,
+        progression,
       )
       if (suggestion) suggestions.set(row.item.exerciseId, suggestion)
     }

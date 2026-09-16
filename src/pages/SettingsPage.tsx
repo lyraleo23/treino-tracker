@@ -1,9 +1,9 @@
 import { useRef, useState } from 'react'
 import { useLiveQuery } from 'dexie-react-hooks'
-import { db, DEFAULT_LADDER_RATIOS } from '../db/db'
+import { db, DEFAULT_LADDER_RATIOS, MAX_SESSIONS_TO_INCREASE } from '../db/db'
 import { exportBackup, importBackup, mergeBackup, wipeAll, type ImportMode } from '../db/backup'
-import { saveLadderRatios } from '../db/actions'
-import { getLadderRatios } from '../db/queries'
+import { saveLadderRatios, saveProgressionSettings } from '../db/actions'
+import { getLadderRatios, getProgressionSettings } from '../db/queries'
 import { seedIfEmpty } from '../db/seed'
 import { PageHeader } from '../components/PageHeader'
 import { ConfirmDialog } from '../components/Modal'
@@ -27,6 +27,12 @@ const LADDER_FIELDS = [
 type LadderKey = (typeof LADDER_FIELDS)[number]['key']
 type LadderForm = Record<LadderKey, string>
 
+/** 1, 2, 3... até o teto — as opções do seletor de sessões seguidas. */
+const SESSION_OPTIONS = Array.from(
+  { length: MAX_SESSIONS_TO_INCREASE },
+  (_, index) => index + 1,
+)
+
 /** Aplica `fn` a cada percentual — evita repetir as chaves em quatro lugares. */
 function mapLadder<T>(fn: (key: LadderKey) => T): Record<LadderKey, T> {
   return Object.fromEntries(LADDER_FIELDS.map((field) => [field.key, fn(field.key)])) as Record<
@@ -47,6 +53,8 @@ export function SettingsPage() {
   const [ladderForm, setLadderForm] = useState<LadderForm | null>(null)
 
   const savedRatios = useLiveQuery(getLadderRatios, [])
+  const progression = useLiveQuery(getProgressionSettings, [])
+  const sessionsToIncrease = progression?.sessionsToIncrease ?? 1
 
   // A razão é guardada como 0,85; a tela fala em 85%. A conversão vive só aqui.
   const toPercent = (value: number) => String(Math.round(value * 1000) / 10)
@@ -162,6 +170,36 @@ export function SettingsPage() {
         <p className="hint" style={{ marginTop: 8 }}>
           {counts?.sets ?? 0} séries registradas. Tudo fica só neste aparelho — nada é
           enviado para servidor nenhum.
+        </p>
+
+        <h2 className="section-title">Aumento de carga</h2>
+        <p className="hint" style={{ marginTop: 0 }}>
+          Quantas sessões <strong>seguidas</strong> fechando o topo da faixa de
+          repetições — em todas as séries que contam para a progressão — antes de o app
+          sugerir subir o peso. Mudar a carga recomeça a contagem.
+        </p>
+        {/* Grava no toque: o chip aceso e a frase logo abaixo são a confirmação,
+            então um botão de salvar só para um número seria cerimônia. */}
+        <div className="chip-grid chip-grid--wide">
+          {SESSION_OPTIONS.map((value) => (
+            <button
+              key={value}
+              type="button"
+              className={
+                value === sessionsToIncrease ? 'chip-option is-active' : 'chip-option'
+              }
+              aria-pressed={value === sessionsToIncrease}
+              onClick={() => void saveProgressionSettings({ sessionsToIncrease: value })}
+            >
+              {value}
+            </button>
+          ))}
+        </div>
+        <p className="hint">
+          {sessionsToIncrease === 1
+            ? 'Fechou o topo numa sessão, a próxima já oferece subir a carga.'
+            : `Fechou o topo em ${sessionsToIncrease} sessões seguidas com a mesma carga, a próxima oferece subir.`}{' '}
+          Reduzir a carga e endireitar a escada continuam olhando só a última sessão.
         </p>
 
         <h2 className="section-title">Distribuição de carga</h2>

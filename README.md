@@ -21,9 +21,14 @@ sem backend e sem cadastro. Todos os dados ficam no próprio aparelho (IndexedDB
 - **Sessões**: registra peso, repetições/tempo e observação em cada série, com
   cronômetro regressivo nos blocos de tempo.
 - **Sugestão de progressão**: quando todas as séries dos blocos de *working* fecham o
-  topo da faixa, a sessão seguinte oferece subir **2,5 kg ou 5 kg**. O aumento vale
-  para o exercício inteiro — feeders e aquecimento sobem junto, cada bloco a partir do
-  próprio peso anterior, mantendo a proporção entre eles.
+  topo da faixa, a sessão seguinte oferece subir **1 kg, 2,5 kg ou 5 kg**. O aumento
+  vale para o exercício inteiro — feeders e aquecimento sobem junto, cada bloco a
+  partir do próprio peso anterior, mantendo a proporção entre eles.
+- **Quantas sessões antes de subir**: em *Ajustes → Aumento de carga* dá para exigir
+  de 1 a 5 sessões **seguidas** no topo da faixa antes de a sugestão aparecer. Com 2,
+  é preciso repetir o desempenho **na mesma carga** em duas sessões; mudar a carga
+  recomeça a contagem. Reduzir a carga (série abaixo do mínimo da faixa) e endireitar
+  a escada continuam olhando só a última sessão.
 - **Histórico e evolução**: lista de sessões, detalhe agrupado por bloco com as notas
   do treino (sensação geral, pontos fortes, pontos a melhorar) e, por exercício,
   gráfico de peso máximo / volume / repetições ao longo das sessões.

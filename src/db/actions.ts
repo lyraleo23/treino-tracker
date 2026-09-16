@@ -1,5 +1,6 @@
 import Dexie from 'dexie'
 import {
+  clampSessionsToIncrease,
   db,
   DEFAULT_HYDRATION,
   DEFAULT_LADDER_RATIOS,
@@ -12,6 +13,7 @@ import {
   type LadderRatios,
   type MealLogItem,
   type Program,
+  type ProgressionSettings,
   type Session,
   type SetBlock,
   type SetLog,
@@ -139,6 +141,25 @@ export async function deleteExercise(id: string): Promise<void> {
 export async function saveLadderRatios(ladder: LadderRatios): Promise<void> {
   const current = await db.settings.get('app')
   await db.settings.put({ ...current, id: 'app', ladder })
+}
+
+/**
+ * Grava quantas sessões seguidas no topo da faixa são exigidas antes de sugerir
+ * aumento de carga. O `ladder` é preenchido junto porque a linha pode nascer
+ * aqui, e `Settings.ladder` não é opcional.
+ */
+export async function saveProgressionSettings(
+  progression: ProgressionSettings,
+): Promise<void> {
+  const current = await db.settings.get('app')
+  await db.settings.put({
+    ...current,
+    id: 'app',
+    ladder: current?.ladder ?? DEFAULT_LADDER_RATIOS,
+    progression: {
+      sessionsToIncrease: clampSessionsToIncrease(progression.sessionsToIncrease),
+    },
+  })
 }
 
 export async function saveHydrationGoal(goalMl: number): Promise<void> {
