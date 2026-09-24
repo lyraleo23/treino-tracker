@@ -605,6 +605,8 @@ export async function getNutritionGoal(): Promise<Required<NutritionSettings>> {
     kcalMin: saved?.kcalMin ?? DEFAULT_NUTRITION.kcalMin,
     kcalMax: saved?.kcalMax ?? DEFAULT_NUTRITION.kcalMax,
     proteinG: saved?.proteinG ?? DEFAULT_NUTRITION.proteinG,
+    carbsG: saved?.carbsG ?? DEFAULT_NUTRITION.carbsG,
+    fatG: saved?.fatG ?? DEFAULT_NUTRITION.fatG,
   }
 }
 
@@ -616,6 +618,9 @@ export interface DayNutrition {
   kcalMax: number
   /** Piso de proteína do dia, em gramas. */
   proteinGoalG: number
+  /** Alvos de carboidrato e gordura do dia, em gramas. */
+  carbsGoalG: number
+  fatGoalG: number
   totalCalories: number
   totalProteinG: number
   totalCarbsG: number
@@ -646,6 +651,8 @@ export async function getDayNutrition(day: number): Promise<DayNutrition> {
   const kcalMin = saved?.kcalMin ?? current.kcalMin
   const kcalMax = saved?.kcalMax ?? current.kcalMax
   const proteinGoalG = saved?.proteinG ?? current.proteinG
+  const carbsGoalG = saved?.carbsG ?? current.carbsG
+  const fatGoalG = saved?.fatG ?? current.fatG
 
   const itemsByLog = new Map<string, MealLogItem[]>()
   for (const item of items) {
@@ -666,6 +673,8 @@ export async function getDayNutrition(day: number): Promise<DayNutrition> {
     kcalMin,
     kcalMax,
     proteinGoalG,
+    carbsGoalG,
+    fatGoalG,
     totalCalories,
     totalProteinG,
     totalCarbsG,

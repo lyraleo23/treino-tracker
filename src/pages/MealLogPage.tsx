@@ -29,19 +29,28 @@ interface Row {
   isAlternative: boolean
 }
 
-function rowsFor(option: DietOption): Row[] {
-  const fromIngredients = (list: DietIngredient[] | undefined, prefix: string, isAlternative: boolean): Row[] =>
-    (list ?? []).map((ing, i) => ({
-      key: `${option.id}-${prefix}-${i}`,
-      foodId: ing.foodId,
-      unit: ing.unit,
-      defaultQuantity: isAlternative ? 0 : ing.quantity,
-      isAlternative,
-    }))
+function linhasDe(
+  list: DietIngredient[] | undefined,
+  keyPrefix: string,
+  isAlternative: boolean,
+): Row[] {
+  return (list ?? []).map((ing, i) => ({
+    key: `${keyPrefix}-${i}`,
+    foodId: ing.foodId,
+    unit: ing.unit,
+    // Alternativa nasce em 0 porque é uma entre várias: quem comeu aquela
+    // digita a quantidade, e as outras ficam fora da conta sozinhas. Vale
+    // igual para o ingrediente fixo que pertence a um `alternativeGroup`,
+    // como a sobremesa do jantar.
+    defaultQuantity: isAlternative || ing.alternativeGroup ? 0 : ing.quantity,
+    isAlternative: isAlternative || !!ing.alternativeGroup,
+  }))
+}
 
+function rowsFor(option: DietOption): Row[] {
   return [
-    ...fromIngredients(option.ingredients, 'ing', false),
-    ...fromIngredients(option.alternativeIngredients, 'alt', true),
+    ...linhasDe(option.ingredients, `${option.id}-ing`, false),
+    ...linhasDe(option.alternativeIngredients, `${option.id}-alt`, true),
   ]
 }
 
@@ -93,7 +102,13 @@ export function MealLogPage() {
 
   const rows =
     mode === 'plan'
-      ? chosenOptions.flatMap(rowsFor)
+      ? [
+          ...chosenOptions.flatMap(rowsFor),
+          // O "Incluir no prato" entra só depois do prato montado: mostrar o
+          // azeite e a fruta antes de haver proteína e carboidrato seria um
+          // prato pela metade dizendo-se inteiro.
+          ...(allChosen ? linhasDe(meal.fixedIngredients, 'fixo', false) : []),
+        ]
       : freeFoodIds.map((foodId) => ({
           key: `free-${foodId}`,
           foodId,
@@ -122,8 +137,13 @@ export function MealLogPage() {
   // disso toca o banco enquanto o Salvar não for tocado.
   const projetadoKcal = dia.totalCalories + summary.calories
   const projetadaProteina = dia.totalProteinG + summary.proteinG
+  const projetadoCarbo = dia.totalCarbsG + summary.carbsG
+  const projetadaGordura = dia.totalFatG + summary.fatG
   const faltaKcal = goalGap(projetadoKcal, dia.kcalMin, dia.kcalMax)
   const faltaProteina = goalGap(projetadaProteina, dia.proteinGoalG)
+  // Alvo: o mesmo número dos dois lados, para acusar tanto a falta quanto o excesso.
+  const faltaCarbo = goalGap(projetadoCarbo, dia.carbsGoalG, dia.carbsGoalG)
+  const faltaGordura = goalGap(projetadaGordura, dia.fatGoalG, dia.fatGoalG)
 
   const showVegetables = meal.optionalSides?.includes('vegetables_unlimited')
 
@@ -225,6 +245,16 @@ export function MealLogPage() {
               </div>
             )}
 
+            {/* As observações do prato fixo só fazem sentido quando ele está
+                na lista — antes disso falariam de linhas que não apareceram. */}
+            {mode === 'plan' && allChosen && (meal.fixedNotes?.length ?? 0) > 0 && (
+              <div className="stack" style={{ marginBottom: 12, marginTop: 12 }}>
+                {meal.fixedNotes?.map((note, i) => (
+                  <p className="hint" key={i} style={{ margin: 0 }}>{note}</p>
+                ))}
+              </div>
+            )}
+
             <h2 className="section-title">Ingredientes</h2>
             <div className="list">
               {rows.map((row) => {
@@ -308,6 +338,24 @@ export function MealLogPage() {
                   {faltaProteina.status === 'abaixo'
                     ? ` · faltam ${formatNumber(faltaProteina.amount)}`
                     : ' · piso alcançado'}
+                </div>
+                <div className="card__meta">
+                  Carboidrato: {formatNumber(dia.totalCarbsG)} →{' '}
+                  <strong>{formatNumber(projetadoCarbo)}</strong> de{' '}
+                  {formatGrams(dia.carbsGoalG)}
+                  {faltaCarbo.status === 'abaixo' &&
+                    ` · faltam ${formatNumber(faltaCarbo.amount)}`}
+                  {faltaCarbo.status === 'acima' &&
+                    ` · ${formatNumber(faltaCarbo.amount)} acima do alvo`}
+                </div>
+                <div className="card__meta">
+                  Gordura: {formatNumber(dia.totalFatG)} →{' '}
+                  <strong>{formatNumber(projetadaGordura)}</strong> de{' '}
+                  {formatGrams(dia.fatGoalG)}
+                  {faltaGordura.status === 'abaixo' &&
+                    ` · faltam ${formatNumber(faltaGordura.amount)}`}
+                  {faltaGordura.status === 'acima' &&
+                    ` · ${formatNumber(faltaGordura.amount)} acima do alvo`}
                 </div>
               </div>
             </div>

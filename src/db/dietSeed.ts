@@ -1,9 +1,11 @@
 import { db, type DietIngredient, type DietMeal, type DietOption, type DietSelectionMode, type Food } from './db'
 
 /**
- * Transcrito de `HIPERTRON - DIETA 2200-2400 KCAL`, fornecida pelo usuário já
- * calculada (alimentos prontos/preparados). Nutrição por unidade-base; `null`
- * quando a fonte não define (fruta variável do dia).
+ * Alimentos da **dieta anterior** (`HIPERTRON - DIETA 2200-2400 KCAL`),
+ * transcritos dela já calculados. Ficam no catálogo mesmo depois da troca de
+ * dieta: os registros antigos apontam para estes ids, e todos continuam
+ * lançáveis numa refeição livre. Nutrição por unidade-base; `null` quando a
+ * fonte não define (fruta variável do dia).
  */
 interface FoodSeed {
   id: string
@@ -236,7 +238,91 @@ const EXTRA_FOODS: FoodSeed[] = [
   { id: 'tomato_sauce', name: 'Molho de tomate', baseUnit: 'g', calories: 0.6, protein: 0.015, carbs: 0.11, fat: 0.008, estimated: true },
 ]
 
-const ALL_FOODS: FoodSeed[] = [...SEED_FOODS, ...EXTRA_FOODS]
+
+/**
+ * Alimentos que o `Plano Alimentar — Leonardo Lyra` (08/10/2025 a 08/04/2026)
+ * prescreve e que o catálogo ainda não tinha. Mesma natureza do bloco acima:
+ * médias, marcadas como estimativa — a prescrição dá a gramagem de cada opção,
+ * não a composição de cada alimento.
+ */
+const PLAN_FOODS: FoodSeed[] = [
+  // --- Pães e massas do plano -------------------------------------------
+  /*
+   * Fatia de 33 g — a prescrição pede 66 g em duas fatias. Os valores não são
+   * chute: café da manhã e lanche da tarde repetem o mesmo pão mudando só a
+   * quantidade de fruta, então as duas linhas da tabela da p. 3 formam um
+   * sistema que resolve pão e fruta de uma vez. Deu 7,6 g de carboidrato por
+   * fatia — pouco para um pão comum, coerente para um 18 grãos, que é denso e
+   * cheio de semente. A fruta saiu do mesmo sistema em 14,3 g de carboidrato,
+   * contra os 12,7 g que a lista de equivalentes dá por conta própria: duas
+   * origens independentes chegando perto, o que dá confiança nas duas.
+   */
+  { id: 'wholegrain_bread_18_grains', name: 'Pão integral 18 grãos (fatia)', baseUnit: 'fatia', calories: 68.0, protein: 3.6, carbs: 7.6, fat: 2.1, estimated: true },
+  { id: 'pastel_dough_disc', name: 'Disco de massa de pastel', baseUnit: 'un', calories: 95.0, protein: 2.4, carbs: 17.0, fat: 2.0, estimated: true },
+
+  // --- Carboidratos do almoço e do jantar --------------------------------
+  { id: 'seven_grain_rice_cooked', name: 'Arroz 7 grãos cozido', baseUnit: 'g', calories: 1.3, protein: 0.028, carbs: 0.27, fat: 0.011, estimated: true },
+  { id: 'parboiled_rice_cooked', name: 'Arroz parboilizado cozido', baseUnit: 'g', calories: 1.23, protein: 0.026, carbs: 0.27, fat: 0.003, estimated: true },
+  { id: 'wholegrain_pasta_cooked', name: 'Macarrão integral cozido', baseUnit: 'g', calories: 1.24, protein: 0.051, carbs: 0.25, fat: 0.014, estimated: true },
+  { id: 'quinoa_cooked', name: 'Quinoa cozida', baseUnit: 'g', calories: 1.2, protein: 0.044, carbs: 0.213, fat: 0.019, estimated: true },
+
+  // --- Leguminosas do almoço ---------------------------------------------
+  // Valores da TACO, do feijão **como se come** — cozido, com o caldo. O
+  // `beans_cooked` genérico do catálogo, herdado da dieta anterior, é quase o
+  // dobro disto: é grão escorrido e bem seco, que não é o que vai na concha.
+  // O azuki é mesmo mais denso que os outros, não é engano de transcrição.
+  { id: 'azuki_beans_cooked', name: 'Feijão azuki cozido', baseUnit: 'g', calories: 1.28, protein: 0.076, carbs: 0.25, fat: 0.001, estimated: true },
+  { id: 'black_eyed_peas_cooked', name: 'Feijão fradinho cozido', baseUnit: 'g', calories: 0.78, protein: 0.049, carbs: 0.135, fat: 0.005, estimated: true },
+  { id: 'black_beans_cooked', name: 'Feijão preto cozido', baseUnit: 'g', calories: 0.77, protein: 0.045, carbs: 0.14, fat: 0.005, estimated: true },
+  { id: 'carioca_beans_cooked', name: 'Feijão carioca cozido', baseUnit: 'g', calories: 0.76, protein: 0.048, carbs: 0.136, fat: 0.005, estimated: true },
+  { id: 'white_beans_cooked', name: 'Feijão branco cozido', baseUnit: 'g', calories: 0.91, protein: 0.06, carbs: 0.165, fat: 0.005, estimated: true },
+
+  // --- Proteínas do almoço e do jantar ------------------------------------
+  { id: 'filet_mignon_grilled', name: 'Filé mignon grelhado', baseUnit: 'g', calories: 2.1, protein: 0.29, carbs: 0.0, fat: 0.1, estimated: true },
+  { id: 'maminha_grilled', name: 'Maminha grelhada', baseUnit: 'g', calories: 1.95, protein: 0.28, carbs: 0.0, fat: 0.09, estimated: true },
+  { id: 'chicken_drumstick_skinless', name: 'Coxa de frango sem pele', baseUnit: 'g', calories: 1.61, protein: 0.244, carbs: 0.0, fat: 0.062, estimated: true },
+
+  // --- Recheios do lanche --------------------------------------------------
+  { id: 'ricotta_cream_light', name: 'Creme de ricota light', baseUnit: 'g', calories: 1.45, protein: 0.09, carbs: 0.03, fat: 0.1, estimated: true },
+  { id: 'chicken_pate', name: 'Patê de frango', baseUnit: 'g', calories: 2.1, protein: 0.11, carbs: 0.03, fat: 0.17, estimated: true },
+
+  // --- Guarnições e sobremesa ----------------------------------------------
+  // O "3 colheres de servir de legumes" do prato: média do grupo B da p. 15.
+  { id: 'cooked_vegetables_mix', name: 'Legumes cozidos (mistura)', baseUnit: 'g', calories: 0.35, protein: 0.016, carbs: 0.06, fat: 0.004, estimated: true },
+  { id: 'fruit_popsicle', name: 'Picolé de fruta', baseUnit: 'un', calories: 70.0, protein: 0.3, carbs: 17.0, fat: 0.1, estimated: true },
+
+  /*
+   * A unidade em que a prescrição fala de fruta: "1 porção", "2 porções". O
+   * número é a média das 40 frutas da lista de equivalentes (p. 12–13), cada
+   * uma no peso que a própria lista dá — de 40 g de banana ouro a 180 g de
+   * melão. Deu ~12,7 g de carboidrato por porção, que é o que se espera de uma
+   * lista de equivalentes: ela é montada justamente para que toda porção
+   * carregue o mesmo carboidrato.
+   *
+   * Quem quiser lançar a fruta exata em vez da média tem as frutas da lista no
+   * catálogo, uma a uma.
+   */
+  { id: 'fruit_portion', name: 'Porção de fruta', baseUnit: 'portion', calories: 55.0, protein: 0.7, carbs: 12.7, fat: 0.3, estimated: true },
+
+  // --- Frutas da lista de equivalentes que faltavam -------------------------
+  { id: 'banana_maca', name: 'Banana maçã', baseUnit: 'un', calories: 44.0, protein: 0.6, carbs: 11.5, fat: 0.1, estimated: true },
+  { id: 'banana_nanica', name: 'Banana nanica', baseUnit: 'un', calories: 55.0, protein: 0.7, carbs: 14.0, fat: 0.2, estimated: true },
+  { id: 'banana_ouro', name: 'Banana ouro', baseUnit: 'un', calories: 46.0, protein: 0.5, carbs: 11.5, fat: 0.1, estimated: true },
+  { id: 'banana_terra', name: 'Banana da terra', baseUnit: 'g', calories: 1.28, protein: 0.013, carbs: 0.32, fat: 0.004, estimated: true },
+  { id: 'blackberry', name: 'Amora', baseUnit: 'g', calories: 0.43, protein: 0.014, carbs: 0.096, fat: 0.005, estimated: true },
+  { id: 'raspberry', name: 'Framboesa', baseUnit: 'g', calories: 0.52, protein: 0.012, carbs: 0.12, fat: 0.007, estimated: true },
+  { id: 'blueberry', name: 'Mirtilo', baseUnit: 'g', calories: 0.57, protein: 0.007, carbs: 0.145, fat: 0.003, estimated: true },
+  { id: 'cherry', name: 'Cereja', baseUnit: 'g', calories: 0.63, protein: 0.011, carbs: 0.16, fat: 0.002, estimated: true },
+  { id: 'cashew_fruit', name: 'Caju (fruta)', baseUnit: 'g', calories: 0.43, protein: 0.008, carbs: 0.11, fat: 0.002, estimated: true },
+  { id: 'starfruit', name: 'Carambola', baseUnit: 'g', calories: 0.31, protein: 0.01, carbs: 0.07, fat: 0.003, estimated: true },
+  { id: 'fig', name: 'Figo', baseUnit: 'un', calories: 40.0, protein: 0.4, carbs: 10.0, fat: 0.2, estimated: true },
+  { id: 'jabuticaba', name: 'Jabuticaba', baseUnit: 'g', calories: 0.58, protein: 0.006, carbs: 0.155, fat: 0.001, estimated: true },
+  { id: 'nectarine', name: 'Nectarina', baseUnit: 'un', calories: 44.0, protein: 1.1, carbs: 10.6, fat: 0.3, estimated: true },
+  { id: 'pitanga', name: 'Pitanga', baseUnit: 'g', calories: 0.41, protein: 0.01, carbs: 0.1, fat: 0.004, estimated: true },
+  { id: 'fruit_salad', name: 'Salada de frutas', baseUnit: 'g', calories: 0.6, protein: 0.007, carbs: 0.15, fat: 0.002, estimated: true },
+]
+
+const ALL_FOODS: FoodSeed[] = [...SEED_FOODS, ...EXTRA_FOODS, ...PLAN_FOODS]
 
 interface MealSeed {
   id: string
@@ -244,17 +330,62 @@ interface MealSeed {
   selectionMode: DietSelectionMode
   selectionRules: Record<string, number>
   optionalSides?: string[]
+  fixedIngredients?: DietIngredient[]
+  fixedNotes?: string[]
 }
 
+/**
+ * As quatro refeições do plano. Os ids vêm da dieta anterior de propósito: a
+ * ocasião é a mesma, e reaproveitá-los faz o registro antigo de um almoço
+ * continuar aparecendo como "Almoço" no histórico em vez de "Refeição
+ * removida". O `meal_5` (ceia) não tem correspondente — esta dieta não tem
+ * ceia, e os registros dela ficam sem nome, que é o que de fato aconteceu.
+ */
 const SEED_MEALS: MealSeed[] = [
-  { id: 'meal_1', name: 'Café da manhã', selectionMode: 'one_from_each_category', selectionRules: { protein: 1, carbohydrate: 1 } },
-  { id: 'meal_2', name: 'Almoço', selectionMode: 'one_from_each_category', selectionRules: { protein: 1, carbohydrate: 1 }, optionalSides: ['vegetables_unlimited'] },
-  // A fonte usa a chave "option" (singular) em selection_rules mas "options"
-  // (plural) em plan_options — normalizado para "options" nos dois lados,
-  // que é o que o formulário de registro usa para casar categoria e opções.
+  { id: 'meal_1', name: 'Café da manhã', selectionMode: 'one_option', selectionRules: { options: 1 } },
+  {
+    id: 'meal_2',
+    name: 'Almoço',
+    selectionMode: 'one_from_each_category',
+    selectionRules: { carbohydrate: 1, legume: 1, protein: 1 },
+    optionalSides: ['vegetables_unlimited'],
+    // "Incluir no prato": vale para qualquer combinação escolhida acima.
+    fixedIngredients: [
+      { foodId: 'cooked_vegetables_mix', quantity: 150, unit: 'g' },
+      { foodId: 'olive_oil', quantity: 5, unit: 'g' },
+      { foodId: 'fruit_portion', quantity: 1, unit: 'portion' },
+    ],
+    fixedNotes: [
+      'Incluir no prato: salada crua à vontade.',
+      'Os legumes são 3 colheres de servir (150 g), cozidos, refogados, grelhados ou assados.',
+      'O azeite é 1 colher de sobremesa (5 g).',
+    ],
+  },
   { id: 'meal_3', name: 'Lanche da tarde', selectionMode: 'one_option', selectionRules: { options: 1 } },
-  { id: 'meal_4', name: 'Jantar', selectionMode: 'one_from_each_category', selectionRules: { protein: 1, carbohydrate: 1 }, optionalSides: ['vegetables_unlimited'] },
-  { id: 'meal_5', name: 'Ceia', selectionMode: 'one_option', selectionRules: { options: 1 } },
+  {
+    id: 'meal_4',
+    name: 'Jantar',
+    selectionMode: 'one_from_each_category',
+    // Sem leguminosa: o jantar da prescrição tem só carboidrato e proteína.
+    selectionRules: { carbohydrate: 1, protein: 1 },
+    optionalSides: ['vegetables_unlimited'],
+    fixedIngredients: [
+      { foodId: 'cooked_vegetables_mix', quantity: 150, unit: 'g' },
+      { foodId: 'olive_oil', quantity: 2, unit: 'g' },
+      // A sobremesa é uma entre quatro: todas nascem em 0 e quem comeu digita a
+      // quantidade da sua, como já acontece com os ingredientes alternativos.
+      { foodId: 'chocolate', quantity: 20, unit: 'g', alternativeGroup: 'sobremesa' },
+      { foodId: 'pacoca', quantity: 1, unit: 'un', alternativeGroup: 'sobremesa' },
+      { foodId: 'dulce_de_leche', quantity: 20, unit: 'g', alternativeGroup: 'sobremesa' },
+      { foodId: 'fruit_popsicle', quantity: 1, unit: 'un', alternativeGroup: 'sobremesa' },
+    ],
+    fixedNotes: [
+      'Incluir no prato: salada crua à vontade, no mínimo meio prato.',
+      'Os legumes são 3 colheres de servir (150 g), cozidos no vapor.',
+      'O azeite é 1 colher de chá (2 g).',
+      'Sobremesa: escolha uma das quatro e lance a quantidade só dela — 20 g de chocolate, 1 paçoquinha, 20 g de doce de leite ou 1 picolé de fruta.',
+    ],
+  },
 ]
 
 interface OptionSeed {
@@ -272,354 +403,470 @@ interface OptionSeed {
 const SEED_OPTIONS: OptionSeed[] = [
   // --- meal_1: Café da manhã -------------------------------------------
   {
-    id: 'meal1_protein_01',
+    id: 'meal1_option_01',
     mealId: 'meal_1',
-    category: 'protein',
-    name: 'Ovos + claras + whey',
+    category: 'options',
+    name: 'Pão + muçarela',
     ingredients: [
-      { foodId: 'egg_whole', quantity: 4, unit: 'un' },
-      { foodId: 'egg_white', quantity: 2, unit: 'un' },
-      { foodId: 'whey_protein', quantity: 15, unit: 'g' },
+      { foodId: 'wholegrain_bread_18_grains', quantity: 2, unit: 'fatia' },
+      { foodId: 'mozzarella_slice', quantity: 2, unit: 'fatia' },
+      { foodId: 'fruit_portion', quantity: 1, unit: 'portion' },
     ],
+    notes: ['Sugestão de pão: Wickbold 18 grãos — 66 g nas duas fatias.', '2 fatias de muçarela — 40 g.'],
   },
   {
-    id: 'meal1_protein_02',
+    id: 'meal1_option_02',
     mealId: 'meal_1',
-    category: 'protein',
-    name: 'Frango desfiado',
-    ingredients: [{ foodId: 'chicken_shredded', quantity: 130, unit: 'g' }],
-  },
-  {
-    id: 'meal1_protein_03',
-    mealId: 'meal_1',
-    category: 'protein',
-    name: 'Whey protein',
-    ingredients: [{ foodId: 'whey_protein', quantity: 60, unit: 'g' }],
-  },
-  {
-    id: 'meal1_protein_04',
-    mealId: 'meal_1',
-    category: 'protein',
-    name: 'Atum',
-    ingredients: [{ foodId: 'tuna_water_or_fresh', quantity: 150, unit: 'g' }],
-  },
-  {
-    id: 'meal1_carb_01',
-    mealId: 'meal_1',
-    category: 'carbohydrate',
-    name: 'Tapioca',
-    ingredients: [{ foodId: 'tapioca', quantity: 65, unit: 'g' }],
-  },
-  {
-    id: 'meal1_carb_02',
-    mealId: 'meal_1',
-    category: 'carbohydrate',
-    name: 'Pão francês + fruta',
+    category: 'options',
+    name: 'Pão + ovos',
     ingredients: [
-      { foodId: 'french_bread', quantity: 1.5, unit: 'un' },
-      { foodId: 'kiwi', quantity: 1, unit: 'un', alternativeGroup: 'fruit' },
-      { foodId: 'papaya', quantity: 0.5, unit: 'un', alternativeGroup: 'fruit' },
+      { foodId: 'wholegrain_bread_18_grains', quantity: 2, unit: 'fatia' },
+      { foodId: 'egg_whole', quantity: 2, unit: 'un' },
+      { foodId: 'fruit_portion', quantity: 1, unit: 'portion' },
     ],
-    alternativeLogic: 'Escolha 1 kiwi OU 1/2 mamão papaia.',
+    notes: ['Sugestão de pão: Wickbold 18 grãos — 66 g nas duas fatias.', '2 unidades de ovo de galinha — 90 g.'],
   },
   {
-    id: 'meal1_carb_03',
+    id: 'meal1_option_03',
     mealId: 'meal_1',
-    category: 'carbohydrate',
-    name: 'Pão integral',
-    ingredients: [{ foodId: 'wholegrain_bread', quantity: 4, unit: 'fatia' }],
-  },
-  {
-    id: 'meal1_carb_04',
-    mealId: 'meal_1',
-    category: 'carbohydrate',
-    name: 'Mix de frutas',
+    category: 'options',
+    name: 'Pão + muçarela + ovo',
     ingredients: [
-      { foodId: 'banana_prata', quantity: 1, unit: 'un' },
-      { foodId: 'grapes', quantity: 100, unit: 'g' },
-      { foodId: 'strawberries', quantity: 100, unit: 'g' },
+      { foodId: 'wholegrain_bread_18_grains', quantity: 2, unit: 'fatia' },
+      { foodId: 'mozzarella_slice', quantity: 1, unit: 'fatia' },
+      { foodId: 'egg_whole', quantity: 1, unit: 'un' },
+      { foodId: 'fruit_portion', quantity: 1, unit: 'portion' },
     ],
-    alternativeLogic: 'Pode usar outra fruta/combinação que não passe de 40 g de carboidrato.',
+    notes: ['Sugestão de pão: Wickbold 18 grãos — 66 g nas duas fatias.', '1 fatia de muçarela (20 g) + 1 unidade de ovo (50 g).'],
   },
 
-  // --- meal_2: Almoço -----------------------------------------------------
+  // --- meal_2: Almoço ---------------------------------------------------
   {
     id: 'meal2_carb_01',
     mealId: 'meal_2',
     category: 'carbohydrate',
-    name: 'Arroz + feijão',
-    ingredients: [
-      { foodId: 'rice_cooked', quantity: 80, unit: 'g' },
-      { foodId: 'beans_cooked', quantity: 200, unit: 'g' },
-    ],
+    name: 'Arroz branco (4 colheres de servir)',
+    ingredients: [{ foodId: 'rice_cooked', quantity: 180, unit: 'g' }],
   },
   {
     id: 'meal2_carb_02',
     mealId: 'meal_2',
     category: 'carbohydrate',
-    name: 'Arroz',
-    ingredients: [{ foodId: 'rice_cooked', quantity: 135, unit: 'g' }],
-    notes: ['Use quando não for comer arroz com feijão.'],
+    name: 'Arroz 7 grãos (4 colheres de servir)',
+    ingredients: [{ foodId: 'seven_grain_rice_cooked', quantity: 210, unit: 'g' }],
   },
   {
     id: 'meal2_carb_03',
     mealId: 'meal_2',
     category: 'carbohydrate',
-    name: 'Purê de batata',
-    ingredients: [{ foodId: 'mashed_potato', quantity: 180, unit: 'g' }],
+    name: 'Arroz parboilizado (4 colheres de servir)',
+    ingredients: [{ foodId: 'parboiled_rice_cooked', quantity: 180, unit: 'g' }],
   },
   {
     id: 'meal2_carb_04',
     mealId: 'meal_2',
     category: 'carbohydrate',
-    name: 'Mandioca',
-    ingredients: [{ foodId: 'cassava_cooked', quantity: 130, unit: 'g' }],
+    name: 'Arroz integral (4 colheres de servir)',
+    ingredients: [{ foodId: 'brown_rice_cooked', quantity: 180, unit: 'g' }],
   },
   {
     id: 'meal2_carb_05',
     mealId: 'meal_2',
     category: 'carbohydrate',
-    name: 'Macarrão',
-    ingredients: [{ foodId: 'pasta_cooked', quantity: 160, unit: 'g' }],
-    alternativeIngredients: [{ foodId: 'mandioquinha_cooked', quantity: 150, unit: 'g' }],
-    alternativeLogic: 'Escolha 160 g de macarrão OU 150 g de mandioquinha cozida.',
+    name: 'Macarrão integral (4 pegadores)',
+    ingredients: [{ foodId: 'wholegrain_pasta_cooked', quantity: 160, unit: 'g' }],
+  },
+  {
+    id: 'meal2_carb_06',
+    mealId: 'meal_2',
+    category: 'carbohydrate',
+    name: 'Batata doce (2 xícaras)',
+    ingredients: [{ foodId: 'sweet_potato_cooked', quantity: 300, unit: 'g' }],
+  },
+  {
+    id: 'meal2_carb_07',
+    mealId: 'meal_2',
+    category: 'carbohydrate',
+    name: 'Batata baroa (mandioquinha) (2 xícaras)',
+    ingredients: [{ foodId: 'mandioquinha_cooked', quantity: 300, unit: 'g' }],
+  },
+  {
+    id: 'meal2_carb_08',
+    mealId: 'meal_2',
+    category: 'carbohydrate',
+    name: 'Batata inglesa (4 xícaras)',
+    ingredients: [{ foodId: 'potato_cooked', quantity: 400, unit: 'g' }],
+  },
+  {
+    id: 'meal2_carb_09',
+    mealId: 'meal_2',
+    category: 'carbohydrate',
+    name: 'Mandioca (2 xícaras)',
+    ingredients: [{ foodId: 'cassava_cooked', quantity: 200, unit: 'g' }],
+  },
+  {
+    id: 'meal2_carb_10',
+    mealId: 'meal_2',
+    category: 'carbohydrate',
+    name: 'Quinoa (6 colheres de servir)',
+    ingredients: [{ foodId: 'quinoa_cooked', quantity: 200, unit: 'g' }],
+  },
+  {
+    id: 'meal2_legume_01',
+    mealId: 'meal_2',
+    category: 'legume',
+    name: 'Ervilha fresca (6 colheres de sopa)',
+    ingredients: [{ foodId: 'peas_cooked', quantity: 120, unit: 'g' }],
+  },
+  {
+    id: 'meal2_legume_02',
+    mealId: 'meal_2',
+    category: 'legume',
+    name: 'Feijão azuki (4 colheres de sopa)',
+    ingredients: [{ foodId: 'azuki_beans_cooked', quantity: 90, unit: 'g' }],
+  },
+  {
+    id: 'meal2_legume_03',
+    mealId: 'meal_2',
+    category: 'legume',
+    name: 'Feijão fradinho (6 colheres de sopa)',
+    ingredients: [{ foodId: 'black_eyed_peas_cooked', quantity: 120, unit: 'g' }],
+  },
+  {
+    id: 'meal2_legume_04',
+    mealId: 'meal_2',
+    category: 'legume',
+    name: 'Feijão preto (1 concha pequena)',
+    ingredients: [{ foodId: 'black_beans_cooked', quantity: 120, unit: 'g' }],
+  },
+  {
+    id: 'meal2_legume_05',
+    mealId: 'meal_2',
+    category: 'legume',
+    name: 'Feijão carioca (1 concha pequena)',
+    ingredients: [{ foodId: 'carioca_beans_cooked', quantity: 120, unit: 'g' }],
+  },
+  {
+    id: 'meal2_legume_06',
+    mealId: 'meal_2',
+    category: 'legume',
+    name: 'Feijão branco (3 colheres de sopa)',
+    ingredients: [{ foodId: 'white_beans_cooked', quantity: 65, unit: 'g' }],
+  },
+  {
+    id: 'meal2_legume_07',
+    mealId: 'meal_2',
+    category: 'legume',
+    name: 'Lentilha (5 colheres de sopa)',
+    ingredients: [{ foodId: 'lentils_cooked', quantity: 100, unit: 'g' }],
+  },
+  {
+    id: 'meal2_legume_08',
+    mealId: 'meal_2',
+    category: 'legume',
+    name: 'Grão de bico (3 colheres de sopa)',
+    ingredients: [{ foodId: 'chickpeas_cooked', quantity: 60, unit: 'g' }],
   },
   {
     id: 'meal2_protein_01',
     mealId: 'meal_2',
     category: 'protein',
-    name: 'Sobrecoxa assada',
-    ingredients: [{ foodId: 'chicken_thigh_roasted_skinless_boneless', quantity: 160, unit: 'g' }],
+    name: 'Alcatra grelhada (2 bifes médios)',
+    ingredients: [{ foodId: 'beef_rump_grilled', quantity: 150, unit: 'g' }],
   },
   {
     id: 'meal2_protein_02',
     mealId: 'meal_2',
     category: 'protein',
-    name: 'Filé de frango grelhado',
-    ingredients: [
-      { foodId: 'chicken_breast_grilled', quantity: 135, unit: 'g' },
-      { foodId: 'olive_oil', quantity: 1, unit: 'fio', estimated: true },
-    ],
+    name: 'Filé mignon grelhado (2 pedaços médios)',
+    ingredients: [{ foodId: 'filet_mignon_grilled', quantity: 150, unit: 'g' }],
   },
   {
     id: 'meal2_protein_03',
     mealId: 'meal_2',
     category: 'protein',
-    name: 'Tilápia grelhada',
-    ingredients: [{ foodId: 'tilapia_grilled', quantity: 220, unit: 'g' }],
+    name: 'Maminha grelhada (2 filés médios)',
+    ingredients: [{ foodId: 'maminha_grilled', quantity: 190, unit: 'g' }],
   },
   {
     id: 'meal2_protein_04',
     mealId: 'meal_2',
     category: 'protein',
-    name: 'Patinho',
-    ingredients: [{ foodId: 'ground_beef_patinho', quantity: 140, unit: 'g' }],
+    name: 'Patinho (2 filés médios)',
+    ingredients: [{ foodId: 'ground_beef_patinho', quantity: 150, unit: 'g' }],
   },
   {
     id: 'meal2_protein_05',
     mealId: 'meal_2',
     category: 'protein',
-    name: 'Lombo suíno',
-    ingredients: [{ foodId: 'pork_loin_cooked', quantity: 200, unit: 'g' }],
-    notes: [
-      'Acrescente folhas à vontade e 100 g de legumes no vapor.',
-      'Não use azeite; use sal light, limão e/ou molho zero calorias.',
-    ],
+    name: 'Coxa de frango sem pele (2 unidades médias)',
+    ingredients: [{ foodId: 'chicken_drumstick_skinless', quantity: 156, unit: 'g' }],
+  },
+  {
+    id: 'meal2_protein_06',
+    mealId: 'meal_2',
+    category: 'protein',
+    name: 'Peito de frango grelhado sem pele (2 peitos médios)',
+    ingredients: [{ foodId: 'chicken_breast_grilled', quantity: 190, unit: 'g' }],
+  },
+  {
+    id: 'meal2_protein_07',
+    mealId: 'meal_2',
+    category: 'protein',
+    name: 'Coxa/sobrecoxa assada (1 unidade grande)',
+    ingredients: [{ foodId: 'chicken_thigh_roasted_skinless_boneless', quantity: 150, unit: 'g' }],
+  },
+  {
+    id: 'meal2_protein_08',
+    mealId: 'meal_2',
+    category: 'protein',
+    name: 'Lombo suíno assado (7 fatias finas)',
+    ingredients: [{ foodId: 'pork_loin_cooked', quantity: 150, unit: 'g' }],
+  },
+  {
+    id: 'meal2_protein_09',
+    mealId: 'meal_2',
+    category: 'protein',
+    name: 'Tilápia assada (2 filés grandes)',
+    ingredients: [{ foodId: 'tilapia_grilled', quantity: 250, unit: 'g' }],
+  },
+  {
+    id: 'meal2_protein_10',
+    mealId: 'meal_2',
+    category: 'protein',
+    name: 'Salmão grelhado sem pele (2 pedaços médios)',
+    ingredients: [{ foodId: 'salmon_grilled', quantity: 150, unit: 'g' }],
   },
 
-  // --- meal_3: Lanche da tarde ---------------------------------------------
+  // --- meal_3: Lanche da tarde ------------------------------------------
   {
     id: 'meal3_option_01',
     mealId: 'meal_3',
     category: 'options',
-    name: 'Shake de whey + leite + abacate',
+    name: 'Pão + muçarela',
     ingredients: [
-      { foodId: 'whey_protein', quantity: 60, unit: 'g' },
-      { foodId: 'skim_milk', quantity: 200, unit: 'ml' },
-      { foodId: 'avocado', quantity: 100, unit: 'g' },
+      { foodId: 'wholegrain_bread_18_grains', quantity: 2, unit: 'fatia' },
+      { foodId: 'mozzarella_slice', quantity: 2, unit: 'fatia' },
+      { foodId: 'fruit_portion', quantity: 2, unit: 'portion' },
     ],
-    alternativeIngredients: [
-      { foodId: 'banana_prata', quantity: 1, unit: 'un' },
-      { foodId: 'oats', quantity: 50, unit: 'g' },
-    ],
-    alternativeLogic: 'Banana + aveia como alternativa ao abacate.',
+    notes: ['Sugestão de pão: Wickbold 18 grãos — 66 g nas duas fatias.', '2 fatias de muçarela — 40 g.'],
   },
   {
     id: 'meal3_option_02',
     mealId: 'meal_3',
     category: 'options',
-    name: 'Panqueca de whey',
+    name: 'Pão + ovos',
     ingredients: [
-      { foodId: 'banana_large', quantity: 1, unit: 'un' },
-      { foodId: 'skim_milk', quantity: 200, unit: 'ml' },
-      { foodId: 'oats', quantity: 40, unit: 'g' },
-      { foodId: 'whey_protein', quantity: 30, unit: 'g' },
-      { foodId: 'egg_whole', quantity: 1, unit: 'un' },
+      { foodId: 'wholegrain_bread_18_grains', quantity: 2, unit: 'fatia' },
+      { foodId: 'egg_whole', quantity: 2, unit: 'un' },
+      { foodId: 'fruit_portion', quantity: 2, unit: 'portion' },
     ],
-    preparation: 'Bata todos os ingredientes e cozinhe em fogo baixo numa frigideira antiaderente.',
+    notes: ['Sugestão de pão: Wickbold 18 grãos — 66 g nas duas fatias.', '2 unidades de ovo de galinha — 90 g.'],
   },
   {
     id: 'meal3_option_03',
     mealId: 'meal_3',
     category: 'options',
-    name: 'Salada de frutas proteica',
+    name: 'Pão + muçarela + ovo',
     ingredients: [
-      { foodId: 'apple', quantity: 0.5, unit: 'un' },
-      { foodId: 'grapes', quantity: 50, unit: 'g' },
-      { foodId: 'melon', quantity: 100, unit: 'g' },
-      { foodId: 'strawberries', quantity: 100, unit: 'g' },
-      { foodId: 'oats', quantity: 20, unit: 'g' },
-      { foodId: 'whey_protein', quantity: 60, unit: 'g' },
+      { foodId: 'wholegrain_bread_18_grains', quantity: 2, unit: 'fatia' },
+      { foodId: 'mozzarella_slice', quantity: 1, unit: 'fatia' },
+      { foodId: 'egg_whole', quantity: 1, unit: 'un' },
+      { foodId: 'fruit_portion', quantity: 2, unit: 'portion' },
     ],
-    alternativeLogic: 'A fonte permite 100 g de morango OU ameixa.',
+    notes: ['Sugestão de pão: Wickbold 18 grãos — 66 g nas duas fatias.', '1 fatia de muçarela (20 g) + 1 unidade de ovo (50 g).'],
   },
   {
     id: 'meal3_option_04',
     mealId: 'meal_3',
     category: 'options',
-    name: 'Pão de frango',
+    name: 'Pastel de frango',
     ingredients: [
-      { foodId: 'chicken_shredded', quantity: 120, unit: 'g' },
-      { foodId: 'egg_whole', quantity: 1, unit: 'un' },
-      { foodId: 'grated_cheese', quantity: 1, unit: 'tbsp' },
-      { foodId: 'baking_powder', quantity: 1, unit: 'tsp' },
+      { foodId: 'pastel_dough_disc', quantity: 1, unit: 'un' },
+      { foodId: 'ricotta_cream_light', quantity: 10, unit: 'g' },
+      { foodId: 'chicken_shredded', quantity: 40, unit: 'g' },
+      { foodId: 'fruit_portion', quantity: 2, unit: 'portion' },
     ],
-    preparation: 'Bata no liquidificador, coloque num refratário e microondas por 3 minutos. Opcional: tostar na frigideira depois.',
+    notes: ['Frango desfiado ao molho.'],
+  },
+  {
+    id: 'meal3_option_05',
+    mealId: 'meal_3',
+    category: 'options',
+    name: 'Pão + patê de frango',
+    ingredients: [
+      { foodId: 'wholegrain_bread_18_grains', quantity: 2, unit: 'fatia' },
+      { foodId: 'chicken_pate', quantity: 60, unit: 'g' },
+      { foodId: 'fruit_portion', quantity: 2, unit: 'portion' },
+    ],
+    notes: ['Sugestão de pão: Wickbold 18 grãos — 66 g nas duas fatias.', '3 colheres de sopa de patê — 60 g.'],
   },
 
-  // --- meal_4: Jantar (mesmas opções de carboidrato/proteína do almoço, exceto sobrecoxa) --
+  // --- meal_4: Jantar ---------------------------------------------------
   {
     id: 'meal4_carb_01',
     mealId: 'meal_4',
     category: 'carbohydrate',
-    name: 'Arroz + feijão',
-    ingredients: [
-      { foodId: 'rice_cooked', quantity: 80, unit: 'g' },
-      { foodId: 'beans_cooked', quantity: 200, unit: 'g' },
-    ],
+    name: 'Arroz branco (3 colheres de servir)',
+    ingredients: [{ foodId: 'rice_cooked', quantity: 135, unit: 'g' }],
   },
   {
     id: 'meal4_carb_02',
     mealId: 'meal_4',
     category: 'carbohydrate',
-    name: 'Arroz',
-    ingredients: [{ foodId: 'rice_cooked', quantity: 135, unit: 'g' }],
-    notes: ['Use quando não for comer arroz com feijão.'],
+    name: 'Arroz 7 grãos (3 colheres de servir)',
+    ingredients: [{ foodId: 'seven_grain_rice_cooked', quantity: 155, unit: 'g' }],
   },
   {
     id: 'meal4_carb_03',
     mealId: 'meal_4',
     category: 'carbohydrate',
-    name: 'Purê de batata',
-    ingredients: [{ foodId: 'mashed_potato', quantity: 180, unit: 'g' }],
+    name: 'Arroz parboilizado (3 colheres de servir)',
+    ingredients: [{ foodId: 'parboiled_rice_cooked', quantity: 135, unit: 'g' }],
   },
   {
     id: 'meal4_carb_04',
     mealId: 'meal_4',
     category: 'carbohydrate',
-    name: 'Mandioca',
-    ingredients: [{ foodId: 'cassava_cooked', quantity: 130, unit: 'g' }],
+    name: 'Arroz integral (3 colheres de servir)',
+    ingredients: [{ foodId: 'brown_rice_cooked', quantity: 135, unit: 'g' }],
   },
   {
     id: 'meal4_carb_05',
     mealId: 'meal_4',
     category: 'carbohydrate',
-    name: 'Macarrão',
-    ingredients: [{ foodId: 'pasta_cooked', quantity: 160, unit: 'g' }],
-    alternativeIngredients: [{ foodId: 'mandioquinha_cooked', quantity: 150, unit: 'g' }],
-    alternativeLogic: 'Escolha 160 g de macarrão OU 150 g de mandioquinha cozida.',
+    name: 'Macarrão integral (3 pegadores)',
+    ingredients: [{ foodId: 'wholegrain_pasta_cooked', quantity: 120, unit: 'g' }],
+  },
+  {
+    id: 'meal4_carb_06',
+    mealId: 'meal_4',
+    category: 'carbohydrate',
+    name: 'Batata doce (1 e ½ xícara)',
+    ingredients: [{ foodId: 'sweet_potato_cooked', quantity: 225, unit: 'g' }],
+  },
+  {
+    id: 'meal4_carb_07',
+    mealId: 'meal_4',
+    category: 'carbohydrate',
+    name: 'Batata baroa (mandioquinha) (1 e ½ xícara)',
+    ingredients: [{ foodId: 'mandioquinha_cooked', quantity: 225, unit: 'g' }],
+  },
+  {
+    id: 'meal4_carb_08',
+    mealId: 'meal_4',
+    category: 'carbohydrate',
+    name: 'Batata inglesa (3 xícaras)',
+    ingredients: [{ foodId: 'potato_cooked', quantity: 300, unit: 'g' }],
+  },
+  {
+    id: 'meal4_carb_09',
+    mealId: 'meal_4',
+    category: 'carbohydrate',
+    name: 'Mandioca (1 e ½ xícara)',
+    ingredients: [{ foodId: 'cassava_cooked', quantity: 150, unit: 'g' }],
+  },
+  {
+    id: 'meal4_carb_10',
+    mealId: 'meal_4',
+    category: 'carbohydrate',
+    name: 'Quinoa (9 colheres de sopa)',
+    ingredients: [{ foodId: 'quinoa_cooked', quantity: 150, unit: 'g' }],
   },
   {
     id: 'meal4_protein_01',
     mealId: 'meal_4',
     category: 'protein',
-    name: 'Filé de frango grelhado',
-    ingredients: [
-      { foodId: 'chicken_breast_grilled', quantity: 135, unit: 'g' },
-      { foodId: 'olive_oil', quantity: 1, unit: 'fio', estimated: true },
-    ],
+    name: 'Alcatra grelhada (2 bifes pequenos)',
+    ingredients: [{ foodId: 'beef_rump_grilled', quantity: 120, unit: 'g' }],
   },
   {
     id: 'meal4_protein_02',
     mealId: 'meal_4',
     category: 'protein',
-    name: 'Tilápia grelhada',
-    ingredients: [{ foodId: 'tilapia_grilled', quantity: 220, unit: 'g' }],
+    name: 'Filé mignon grelhado (2 pedaços pequenos)',
+    ingredients: [{ foodId: 'filet_mignon_grilled', quantity: 120, unit: 'g' }],
   },
   {
     id: 'meal4_protein_03',
     mealId: 'meal_4',
     category: 'protein',
-    name: 'Patinho',
-    ingredients: [{ foodId: 'ground_beef_patinho', quantity: 140, unit: 'g' }],
+    name: 'Maminha grelhada (2 filés pequenos)',
+    ingredients: [{ foodId: 'maminha_grilled', quantity: 160, unit: 'g' }],
   },
   {
     id: 'meal4_protein_04',
     mealId: 'meal_4',
     category: 'protein',
-    name: 'Lombo suíno',
-    ingredients: [{ foodId: 'pork_loin_cooked', quantity: 200, unit: 'g' }],
-    notes: [
-      'Acrescente folhas à vontade e 100 g de legumes no vapor.',
-      'Não use azeite; use sal light, limão e/ou molho zero calorias.',
-    ],
-  },
-
-  // --- meal_5: Ceia ---------------------------------------------------------
-  {
-    id: 'meal5_option_01',
-    mealId: 'meal_5',
-    category: 'options',
-    name: 'Pasta de amendoim + whey + iogurte',
-    ingredients: [
-      { foodId: 'peanut_butter', quantity: 50, unit: 'g' },
-      { foodId: 'whey_protein', quantity: 60, unit: 'g' },
-      { foodId: 'light_greek_yogurt', quantity: 170, unit: 'ml' },
-    ],
+    name: 'Patinho (2 filés pequenos)',
+    ingredients: [{ foodId: 'ground_beef_patinho', quantity: 120, unit: 'g' }],
   },
   {
-    id: 'meal5_option_02',
-    mealId: 'meal_5',
-    category: 'options',
-    name: 'Mousse de chocolate fake',
-    ingredients: [
-      { foodId: 'light_greek_yogurt', quantity: 1, unit: 'un_serving', estimated: true },
-      { foodId: 'whey_protein', quantity: 30, unit: 'g' },
-      { foodId: 'chocolate', quantity: 30, unit: 'g' },
-      { foodId: 'xanthan_gum', quantity: 1, unit: 'tsp' },
-    ],
-    preparation: 'Misture todos os ingredientes e leve à geladeira. Deixe o chocolate derretido esfriar antes de misturar com o iogurte.',
+    id: 'meal4_protein_05',
+    mealId: 'meal_4',
+    category: 'protein',
+    name: 'Coxa de frango sem pele (2 unidades pequenas)',
+    ingredients: [{ foodId: 'chicken_drumstick_skinless', quantity: 126, unit: 'g' }],
   },
   {
-    id: 'meal5_option_03',
-    mealId: 'meal_5',
-    category: 'options',
-    name: 'Salmão',
-    ingredients: [{ foodId: 'salmon_grilled', quantity: 170, unit: 'g' }],
-    alternativeIngredients: [{ foodId: 'salmon_raw', quantity: 150, unit: 'g' }],
-    alternativeLogic: 'Escolha 170 g de salmão grelhado OU 150 g de salmão cru.',
+    id: 'meal4_protein_06',
+    mealId: 'meal_4',
+    category: 'protein',
+    name: 'Peito de frango grelhado sem pele (2 peitos pequenos)',
+    ingredients: [{ foodId: 'chicken_breast_grilled', quantity: 160, unit: 'g' }],
   },
   {
-    id: 'meal5_option_04',
-    mealId: 'meal_5',
-    category: 'options',
-    name: 'Pão de frango',
-    ingredients: [
-      { foodId: 'chicken_shredded', quantity: 120, unit: 'g' },
-      { foodId: 'egg_whole', quantity: 1, unit: 'un' },
-      { foodId: 'grated_cheese', quantity: 1, unit: 'tbsp' },
-      { foodId: 'baking_powder', quantity: 1, unit: 'tsp' },
-    ],
-    preparation: 'Bata no liquidificador, coloque num refratário e microondas por 3 minutos. Opcional: tostar na frigideira depois.',
+    id: 'meal4_protein_07',
+    mealId: 'meal_4',
+    category: 'protein',
+    name: 'Coxa/sobrecoxa assada (1 unidade grande)',
+    ingredients: [{ foodId: 'chicken_thigh_roasted_skinless_boneless', quantity: 120, unit: 'g' }],
+  },
+  {
+    id: 'meal4_protein_08',
+    mealId: 'meal_4',
+    category: 'protein',
+    name: 'Lombo suíno assado (6 fatias finas)',
+    ingredients: [{ foodId: 'pork_loin_cooked', quantity: 120, unit: 'g' }],
+  },
+  {
+    id: 'meal4_protein_09',
+    mealId: 'meal_4',
+    category: 'protein',
+    name: 'Tilápia assada (2 filés grandes)',
+    ingredients: [{ foodId: 'tilapia_grilled', quantity: 220, unit: 'g' }],
+  },
+  {
+    id: 'meal4_protein_10',
+    mealId: 'meal_4',
+    category: 'protein',
+    name: 'Salmão grelhado sem pele (2 pedaços médios)',
+    ingredients: [{ foodId: 'salmon_grilled', quantity: 120, unit: 'g' }],
   },
 ]
 
-/** Só para exibição na tela de registro — sem rastreamento de nutrição. */
+/**
+ * Grupo A da prescrição (p. 14): consumo à vontade. Só para exibição na tela de
+ * registro — sem rastreamento de nutrição.
+ */
 export const VEGETABLES_UNLIMITED: string[] = [
-  'Alface', 'Cebola', 'Pepino', 'Brócolis', 'Chuchu', 'Tomate', 'Agrião',
-  'Chicória', 'Rabanete', 'Palmito', 'Pimentão', 'Vagem', 'Acelga', 'Couve',
-  'Repolho', 'Couve-flor', 'Broto de alfafa', 'Quiabo', 'Almeirão', 'Escarola',
-  'Rúcula', 'Berinjela', 'Espinafre', 'Alcachofra',
+  'Abobrinha italiana crua', 'Acelga', 'Agrião', 'Aipo (salsão)', 'Alface',
+  'Almeirão', 'Aspargo', 'Broto de feijão', 'Cenoura crua ralada', 'Chicória',
+  'Chuchu cozido', 'Couve manteiga crua', 'Escarola', 'Espinafre cru',
+  'Molho de tomate caseiro', 'Pepino', 'Purê de tomate', 'Rabanete',
+  'Repolho branco e roxo', 'Rúcula', 'Taioba', 'Tomate',
+]
+
+/**
+ * Grupo B da prescrição (p. 15): entram na quantidade que o plano manda, e é
+ * deles que sai o `cooked_vegetables_mix` das 3 colheres de servir do prato.
+ */
+export const VEGETABLES_BY_PLAN: string[] = [
+  'Abóbora cabotiá cozida', 'Abóbora moranga cozida', 'Abóbora de pescoço cozida',
+  'Berinjela cozida', 'Beterraba cozida', 'Brócolis cozido', 'Cenoura cozida',
+  'Cogumelos refogados (champignon, paris, shimeji)', 'Couve-flor cozida',
+  'Espinafre refogado', 'Funghi', 'Jiló cozido', 'Palmito juçara em conserva',
+  'Palmito pupunha em conserva', 'Quiabo', 'Vagem cozida',
 ]
 
 /**
@@ -634,7 +881,9 @@ export const VEGETABLES_UNLIMITED: string[] = [
  * por id — nada do que já está gravado é sobrescrito, para um valor ajustado
  * não voltar ao padrão no deploy seguinte. As refeições e as opções continuam
  * presas à primeira execução: são o plano da dieta, e reinserir uma opção
- * apagada seria desfazer uma escolha do usuário.
+ * apagada seria desfazer uma escolha do usuário. Trocar de dieta, por isso, é
+ * a `version(7)` do Dexie esvaziar as duas tabelas — daí esta função volta a
+ * enxergá-las vazias e semeia o plano novo.
  */
 export async function ensureDietCatalog(): Promise<void> {
   const now = Date.now()
@@ -650,6 +899,8 @@ export async function ensureDietCatalog(): Promise<void> {
     selectionMode: seed.selectionMode,
     selectionRules: seed.selectionRules,
     optionalSides: seed.optionalSides,
+    fixedIngredients: seed.fixedIngredients,
+    fixedNotes: seed.fixedNotes,
   }))
 
   const optionOrderByMeal = new Map<string, number>()

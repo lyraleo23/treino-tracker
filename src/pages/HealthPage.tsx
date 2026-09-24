@@ -9,6 +9,7 @@ import { EmptyState } from '../components/EmptyState'
 import { DrinkLogModal } from '../components/DrinkLogModal'
 import { MealLogEditModal } from '../components/MealLogEditModal'
 import { NutritionGoalModal } from '../components/NutritionGoalModal'
+import { MacroGoalRow } from '../components/MacroGoalRow'
 import { CheckIcon } from '../components/icons'
 import {
   formatGrams,
@@ -75,14 +76,7 @@ export function HealthPage() {
     100,
     diaNutricao.kcalMax > 0 ? Math.round((diaNutricao.totalCalories / diaNutricao.kcalMax) * 100) : 0,
   )
-  const progressoProteina = Math.min(
-    100,
-    diaNutricao.proteinGoalG > 0
-      ? Math.round((diaNutricao.totalProteinG / diaNutricao.proteinGoalG) * 100)
-      : 0,
-  )
   const faltaKcal = goalGap(diaNutricao.totalCalories, diaNutricao.kcalMin, diaNutricao.kcalMax)
-  const faltaProteina = goalGap(diaNutricao.totalProteinG, diaNutricao.proteinGoalG)
 
   const mealById = new Map(meals.map((m) => [m.id, m]))
   const kcalByMeal = new Map<string, number>()
@@ -271,39 +265,27 @@ export function HealthPage() {
             />
           </div>
 
-          {/* Proteína é meta à parte, não um pedaço da de calorias: piso próprio,
-              barra própria e um "batida" que não depende do kcal do dia. */}
-          <div className="card__split">
-            <div className="row row--between">
-              <div style={{ minWidth: 0 }}>
-                {/* O rótulo é necessário aqui e não no bloco de cima: "kcal"
-                    já diz do que se trata, "g" sozinho não diria. */}
-                <div className="card__title">
-                  Proteína: {formatGrams(diaNutricao.totalProteinG)} de{' '}
-                  {formatGrams(diaNutricao.proteinGoalG)}
-                </div>
-                <div className="card__meta">
-                  {faltaProteina.status === 'abaixo'
-                    ? `faltam ${formatGrams(faltaProteina.amount)}`
-                    : 'piso alcançado'}
-                </div>
-              </div>
-              {diaNutricao.proteinHit && (
-                <span className="chip chip--accent">
-                  <CheckIcon width={14} height={14} /> meta batida
-                </span>
-              )}
-            </div>
-
-            <div className="progress" style={{ marginTop: 10 }}>
-              <div
-                className={
-                  diaNutricao.proteinHit ? 'progress__fill is-done' : 'progress__fill'
-                }
-                style={{ width: `${progressoProteina}%` }}
-              />
-            </div>
-          </div>
+          {/* Cada macro é meta à parte, não um pedaço da de calorias: alvo
+              próprio, barra própria e um veredito que não depende do kcal do
+              dia. Dá para bater a proteína num dia que estourou de caloria. */}
+          <MacroGoalRow
+            label="Proteína"
+            total={diaNutricao.totalProteinG}
+            goal={diaNutricao.proteinGoalG}
+            mode="piso"
+          />
+          <MacroGoalRow
+            label="Carboidrato"
+            total={diaNutricao.totalCarbsG}
+            goal={diaNutricao.carbsGoalG}
+            mode="alvo"
+          />
+          <MacroGoalRow
+            label="Gordura"
+            total={diaNutricao.totalFatG}
+            goal={diaNutricao.fatGoalG}
+            mode="alvo"
+          />
         </div>
 
         <h2 className="section-title">Refeições</h2>
@@ -409,6 +391,8 @@ export function HealthPage() {
           kcalMin={diaNutricao.kcalMin}
           kcalMax={diaNutricao.kcalMax}
           proteinG={diaNutricao.proteinGoalG}
+          carbsG={diaNutricao.carbsGoalG}
+          fatG={diaNutricao.fatGoalG}
           onClose={() => setGoalOpen(false)}
         />
       )}
