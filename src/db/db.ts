@@ -71,21 +71,57 @@ export interface HydrationSettings {
   goalMl: number
 }
 
-export const DEFAULT_HYDRATION: HydrationSettings = { goalMl: 2500 }
+/** Os 3 L/dia da prescrição (`Ingestão hídrica`, p. 11). */
+export const DEFAULT_HYDRATION: HydrationSettings = { goalMl: 3000 }
+
+/** O que a hidratação valia antes desta dieta; ver `migrarMetasDaDieta`. */
+export const HYDRATION_DIETA_ANTERIOR: HydrationSettings = { goalMl: 2500 }
 
 /**
- * As metas do dia. A de calorias é uma faixa — passar do teto é estourar; a de
- * proteína é um piso: bater é o mínimo, passar é bom. Por isso as duas não se
- * misturam num julgamento só, e `proteinG` pode faltar numa linha gravada antes
- * dela existir.
+ * As metas do dia, uma por macro. Cada uma é julgada do seu jeito, e é por isso
+ * que não se misturam num veredito só:
+ *
+ * - caloria é **faixa** — ficar abaixo do piso e passar do teto são os dois
+ *   desvios;
+ * - proteína é **piso** — bater é o mínimo, passar é bom;
+ * - carboidrato e gordura são **alvo** — o total que a dieta prescreve, de onde
+ *   se pode ficar aquém ou além.
+ *
+ * Os três últimos são opcionais porque uma linha gravada antes de cada um deles
+ * existir volta sem ele.
  */
 export interface NutritionSettings {
   kcalMin: number
   kcalMax: number
   proteinG?: number
+  carbsG?: number
+  fatG?: number
 }
 
+/**
+ * Os números do `Plano Alimentar — Leonardo Lyra` (08/10/2025 a 08/04/2026),
+ * da tabela "Valor energético e distribuição de macronutrientes" (p. 3):
+ * 1974 kcal, 156,2 g de proteína, 206,6 g de carboidrato, 61,6 g de lipídeo.
+ *
+ * A caloria vem da prescrição como um número só, e aqui precisa de faixa. Os
+ * ±4% saem de onde a imprecisão está: a nutrição do catálogo é estimada, então
+ * um dia bem seguido não cai no valor exato — uma faixa estreita demais faria
+ * o app acusar desvio que é do cálculo, não do prato. Ajustável na tela.
+ */
 export const DEFAULT_NUTRITION: Required<NutritionSettings> = {
+  kcalMin: 1900,
+  kcalMax: 2050,
+  proteinG: 156,
+  carbsG: 207,
+  fatG: 62,
+}
+
+/**
+ * O que as metas valiam na dieta anterior. Só os três campos que existiam
+ * então — carboidrato e gordura nasceram com esta dieta, e quem vem da antiga
+ * nunca gravou valor neles. Ver `migrarMetasDaDieta`.
+ */
+export const NUTRITION_DIETA_ANTERIOR = {
   kcalMin: 2201,
   kcalMax: 2400,
   proteinG: 150,
@@ -104,6 +140,34 @@ export interface Settings {
   hydration?: HydrationSettings
   /** Ausente na linha gravada antes da nutrição existir. */
   nutrition?: NutritionSettings
+}
+
+/**
+ * Passa as metas da dieta anterior para as da nova, **só se ninguém as tiver
+ * mexido**. A dieta trocou, então continuar perseguindo 2200–2400 kcal seria
+ * perseguir um alvo que não existe mais; por outro lado, sobrescrever um número
+ * que a pessoa escolheu a dedo seria apagar uma decisão dela. Entre os dois, o
+ * critério é simples: só migra o que ainda está exatamente no padrão antigo.
+ *
+ * Muda o objeto no lugar, para servir ao `.modify()` do Dexie.
+ */
+export function migrarMetasDaDieta(settings: Settings): void {
+  const nutricao = settings.nutrition
+  if (
+    nutricao &&
+    nutricao.kcalMin === NUTRITION_DIETA_ANTERIOR.kcalMin &&
+    nutricao.kcalMax === NUTRITION_DIETA_ANTERIOR.kcalMax &&
+    // Quem nunca abriu o modal depois da meta de proteína existir não tem o
+    // campo; nos dois casos o valor é o padrão de então, não uma escolha.
+    (nutricao.proteinG ?? NUTRITION_DIETA_ANTERIOR.proteinG) ===
+      NUTRITION_DIETA_ANTERIOR.proteinG
+  ) {
+    settings.nutrition = { ...DEFAULT_NUTRITION }
+  }
+
+  if (settings.hydration?.goalMl === HYDRATION_DIETA_ANTERIOR.goalMl) {
+    settings.hydration = { ...DEFAULT_HYDRATION }
+  }
 }
 
 // --- Hidratação ---------------------------------------------------------
@@ -212,6 +276,15 @@ export interface DietMeal {
   /** Chaves livres (ex.: {protein: 1, carbohydrate: 1} ou {options: 1}), batem com a categoria das DietOption da refeição. */
   selectionRules: Record<string, number>
   optionalSides?: string[]
+  /**
+   * O "Incluir no prato" da prescrição: entra qualquer que seja a opção
+   * escolhida. Mora na refeição, e não na opção, porque repeti-lo nas dez
+   * proteínas do almoço seria dez cópias da mesma linha — e mudar o azeite
+   * exigiria acertar as dez.
+   */
+  fixedIngredients?: DietIngredient[]
+  /** Observações do bloco fixo (a salada à vontade, a escolha da sobremesa). */
+  fixedNotes?: string[]
 }
 
 /** Uma alternativa dentro de uma categoria de uma refeição: "Frango desfiado". */
@@ -262,8 +335,11 @@ export interface MealLogItem {
 }
 
 /**
- * O dia, com a faixa de kcal que valia nele — mesmo motivo do HydrationDay:
- * mudar a meta agora não pode reescrever se um dia passado bateu ou não.
+ * O dia, com as metas que valiam nele — mesmo motivo do HydrationDay: mudar a
+ * meta agora não pode reescrever se um dia passado bateu ou não.
+ *
+ * Atenção ao nome: aqui `proteinG`, `carbsG` e `fatG` são a **meta** do dia, ao
+ * contrário dos campos de mesmo nome no `MealLogItem`, que são o consumido.
  */
 export interface NutritionDay {
   day: number
@@ -271,6 +347,9 @@ export interface NutritionDay {
   kcalMax: number
   /** Ausente nos dias gravados antes da meta de proteína existir. */
   proteinG?: number
+  /** Ausentes nos dias gravados antes das metas de carboidrato e gordura existirem. */
+  carbsG?: number
+  fatG?: number
 }
 
 /**
@@ -592,6 +671,25 @@ class TreinoDB extends Dexie {
       mealLogItems: 'id, mealLogId, day, foodId',
       nutritionDays: 'day',
     })
+
+    // Troca da dieta prescrita. Sem mudança de schema: o que esta versão faz é
+    // apagar o plano antigo para o `ensureDietCatalog` semear o novo na abertura
+    // seguinte — ele só reseme quando `dietMeals` está vazia, e numa instalação
+    // nova este `.upgrade()` nem roda.
+    this.version(7)
+      .stores({})
+      .upgrade(async (tx) => {
+        // Só o plano. `mealLogs`, `mealLogItems` e `nutritionDays` ficam: o que
+        // foi comido e as metas que valiam em cada dia continuam valendo, e é
+        // justamente por serem congelados que trocar a dieta não os invalida.
+        await tx.table('dietMeals').clear()
+        await tx.table('dietOptions').clear()
+
+        await tx
+          .table('settings')
+          .toCollection()
+          .modify((settings: Settings) => migrarMetasDaDieta(settings))
+      })
   }
 }
 

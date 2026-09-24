@@ -316,6 +316,7 @@ export function formatGrams(value: number): string {
 export const DIET_CATEGORY_LABELS: Record<string, string> = {
   protein: 'Proteína',
   carbohydrate: 'Carboidrato',
+  legume: 'Leguminosa',
   options: 'Opções',
 }
 

@@ -12,6 +12,7 @@ import {
   type Flag,
   type LadderRatios,
   type MealLogItem,
+  type NutritionSettings,
   type Program,
   type ProgressionSettings,
   type Session,
@@ -304,20 +305,19 @@ export async function deleteShortcut(id: string): Promise<void> {
 
 // --- Nutrição -------------------------------------------------------------
 
-export async function saveNutritionGoal(
-  kcalMin: number,
-  kcalMax: number,
-  proteinG: number,
-): Promise<void> {
+/** Objeto, e não cinco posicionais: `saveNutritionGoal(1900, 2050, 156, 207, 62)` não se lê. */
+export async function saveNutritionGoal(goal: Required<NutritionSettings>): Promise<void> {
   const current = await db.settings.get('app')
   await db.settings.put({
     ...current,
     id: 'app',
     ladder: current?.ladder ?? DEFAULT_LADDER_RATIOS,
     nutrition: {
-      kcalMin: Math.max(1, Math.round(kcalMin)),
-      kcalMax: Math.max(1, Math.round(kcalMax)),
-      proteinG: Math.max(1, Math.round(proteinG)),
+      kcalMin: Math.max(1, Math.round(goal.kcalMin)),
+      kcalMax: Math.max(1, Math.round(goal.kcalMax)),
+      proteinG: Math.max(1, Math.round(goal.proteinG)),
+      carbsG: Math.max(1, Math.round(goal.carbsG)),
+      fatG: Math.max(1, Math.round(goal.fatG)),
     },
   })
 }
@@ -350,6 +350,8 @@ export async function logMeal(data: {
           kcalMin: goal.kcalMin,
           kcalMax: goal.kcalMax,
           proteinG: goal.proteinG ?? DEFAULT_NUTRITION.proteinG,
+          carbsG: goal.carbsG ?? DEFAULT_NUTRITION.carbsG,
+          fatG: goal.fatG ?? DEFAULT_NUTRITION.fatG,
         })
       }
 
