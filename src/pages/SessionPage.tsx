@@ -17,6 +17,7 @@ import {
   discardSession,
   finishSession,
   saveSetLog,
+  setItemSkipped,
   updateSetBlock,
 } from '../db/actions'
 import {
@@ -39,7 +40,14 @@ import { CardioSetRow, type CardioDraft } from '../components/CardioSetRow'
 import { ExercisePhoto } from '../components/ExercisePhoto'
 import { SetBlockModal } from '../components/SetBlockModal'
 import { SuggestionBanner } from '../components/SuggestionBanner'
-import { ChartIcon, CheckIcon, NoteIcon, PlusIcon, VideoIcon } from '../components/icons'
+import {
+  ChartIcon,
+  CheckIcon,
+  NoteIcon,
+  PlusIcon,
+  SkipIcon,
+  VideoIcon,
+} from '../components/icons'
 import { openExternal } from '../lib/image'
 import {
   blockPlanParts,
@@ -228,6 +236,17 @@ export function SessionPage() {
   }
 
   /**
+   * Exercícios pulados nesta sessão. Vem do banco, e não de um estado local,
+   * porque um treino atravessa recarregamentos de página — no celular a aba é
+   * descartada em segundo plano — e voltar com o exercício desmarcado no meio
+   * da série seguinte seria pior que não ter o botão.
+   */
+  const skipped = useMemo(
+    () => new Set(data?.session.skipped ?? []),
+    [data],
+  )
+
+  /**
    * Quantas séries o bloco mostra: o planejado, mais o que já foi registrado
    * além disso, mais as séries extras pedidas na mão.
    */
@@ -254,12 +273,13 @@ export function SessionPage() {
    */
   const current = useMemo(() => {
     for (const row of data?.rows ?? []) {
+      if (skipped.has(row.item.id)) continue
       for (const block of row.blocks) {
         if (!isBlockDone(block)) return { blockId: block.id, itemId: row.item.id }
       }
     }
     return undefined
-  }, [data, isBlockDone])
+  }, [data, isBlockDone, skipped])
 
   useScrollToCurrent(current, footerRef, blockRefs)
 
@@ -301,13 +321,35 @@ export function SessionPage() {
     ratios,
   } = data
 
-  const totalPlanned = rows.reduce(
-    (sum, row) => sum + row.blocks.reduce((acc, block) => acc + setCountOf(block), 0),
-    0,
-  )
+  const isRowSkipped = (row: Row) => skipped.has(row.item.id)
+
+  const totalPlanned = rows
+    .filter((row) => !isRowSkipped(row))
+    .reduce(
+      (sum, row) => sum + row.blocks.reduce((acc, block) => acc + setCountOf(block), 0),
+      0,
+    )
 
   const isExerciseDone = (row: Row) =>
     row.blocks.length > 0 && row.blocks.every(isBlockDone)
+
+  /** Séries já registradas deste exercício nesta sessão. */
+  const logsOf = (row: Row) =>
+    logs.filter((log) => row.blocks.some((block) => block.id === log.blockId))
+
+  /**
+   * Numerador do contador. Não é `logs.length` porque o denominador desconta os
+   * pulados: contar séries de um exercício que saiu da conta daria um "2 de 10"
+   * sem par — ou um numerador maior que o total.
+   */
+  const totalDone = rows
+    .filter((row) => !isRowSkipped(row))
+    .reduce((sum, row) => sum + logsOf(row).length, 0)
+
+  /** Pular é decisão de percurso, não exclusão: o que já foi feito continua. */
+  function toggleSkip(row: Row) {
+    void setItemSkipped(session.id, row.item.id, !isRowSkipped(row))
+  }
 
   const currentBlockId = current?.blockId
 
@@ -387,6 +429,7 @@ export function SessionPage() {
 
   /** Exercícios com séries faltando, para o aviso dizer o que ficou pendente. */
   const pending = rows
+    .filter((row) => !isRowSkipped(row))
     .map((row) => {
       const planned = row.blocks.reduce((sum, block) => sum + setCountOf(block), 0)
       const done = row.blocks.reduce(
@@ -406,7 +449,7 @@ export function SessionPage() {
     <>
       <PageHeader
         title={session.workoutName}
-        subtitle={`${logs.length} de ${totalPlanned} séries registradas${
+        subtitle={`${totalDone} de ${totalPlanned} séries registradas${
           startedAt !== undefined ? ` · ${formatDuration(elapsed)}` : ''
         }`}
         back
@@ -439,6 +482,7 @@ export function SessionPage() {
 
             const done = isExerciseDone(row)
             const expanded = isExerciseOpen(row)
+            const rowSkipped = isRowSkipped(row)
 
             return (
               <section
@@ -460,9 +504,25 @@ export function SessionPage() {
                     <span className={expanded ? 'caret is-open' : 'caret'}>›</span>
                     <ExercisePhoto photo={exercise.photo} name={exercise.name} />
                     <span className="card__title">{exercise.name}</span>
-                    {done && <span className="chip chip--accent">concluído</span>}
+                    {rowSkipped ? (
+                      <span className="chip">pulado</span>
+                    ) : (
+                      done && <span className="chip chip--accent">concluído</span>
+                    )}
                   </button>
                   <div className="row" style={{ gap: 2 }}>
+                    <button
+                      type="button"
+                      className={
+                        rowSkipped ? 'btn btn--icon btn--ghost is-active' : 'btn btn--icon btn--ghost'
+                      }
+                      aria-label={
+                        rowSkipped ? `Desfazer pular ${exercise.name}` : `Pular ${exercise.name}`
+                      }
+                      onClick={() => toggleSkip(row)}
+                    >
+                      <SkipIcon />
+                    </button>
                     {exercise.videoUrl && (
                       <button
                         type="button"
@@ -488,13 +548,23 @@ export function SessionPage() {
                   </div>
                 </div>
 
-                {!expanded && (
+                {rowSkipped && (
+                  <p className="hint" style={{ margin: '4px 0 0 22px' }}>
+                    {logsOf(row).length === 0
+                      ? 'Pulado nesta sessão.'
+                      : logsOf(row).length === 1
+                        ? 'Pulado — a série já registrada continua no histórico.'
+                        : `Pulado — as ${logsOf(row).length} séries já registradas continuam no histórico.`}
+                  </p>
+                )}
+
+                {!rowSkipped && !expanded && (
                   <p className="hint" style={{ margin: '4px 0 0 22px' }}>
                     {blocks.filter(isBlockDone).length} de {blocks.length} blocos feitos
                   </p>
                 )}
 
-                {expanded && suggestion && !dismissed[item.exerciseId] && (
+                {!rowSkipped && expanded && suggestion && !dismissed[item.exerciseId] && (
                   <SuggestionBanner
                     suggestion={suggestion}
                     step={stepOf(row)}
@@ -510,14 +580,14 @@ export function SessionPage() {
                   />
                 )}
 
-                {expanded && blocks.length === 0 && (
+                {!rowSkipped && expanded && blocks.length === 0 && (
                   <p className="hint">
                     Este exercício não tem blocos configurados. Edite o treino para
                     montá-los.
                   </p>
                 )}
 
-                {expanded && blocks.map((block) => {
+                {!rowSkipped && expanded && blocks.map((block) => {
                   const isTimeRow = block.target.kind === 'time'
                   const isCardioRow = block.target.kind === 'cardio'
                   const cardioFields = exercise.cardioFields ?? DEFAULT_CARDIO_FIELDS
@@ -898,7 +968,7 @@ export function SessionPage() {
       {confirmFinish && (
         <ConfirmDialog
           title="Finalizar incompleto?"
-          message={`Faltam ${totalPlanned - logs.length} de ${totalPlanned} séries: ${pending
+          message={`Faltam ${totalPlanned - totalDone} de ${totalPlanned} séries: ${pending
             .map((row) => `${row.name} (${row.done}/${row.planned})`)
             .join(', ')}.`}
           confirmLabel="Finalizar mesmo assim"

@@ -131,3 +131,10 @@ export const ChartIcon = (props: IconProps) => (
     <path d="m7.5 15 3.5-4 3 2.5 4.5-6" />
   </Icon>
 )
+
+export const SkipIcon = (props: IconProps) => (
+  <Icon fill="currentColor" stroke="none" {...props}>
+    <path d="M6 5.5v13l9-6.5z" />
+    <path d="M17 5.5h2v13h-2z" />
+  </Icon>
+)

@@ -936,6 +936,27 @@ export async function discardSession(sessionId: string): Promise<void> {
   })
 }
 
+/**
+ * Marca ou desmarca um exercício como pulado. Não toca em série alguma: o que
+ * já foi registrado antes da desistência continua sendo o que aconteceu.
+ */
+export async function setItemSkipped(
+  sessionId: string,
+  workoutItemId: string,
+  skipped: boolean,
+): Promise<void> {
+  await db.transaction('rw', db.sessions, async () => {
+    const session = await db.sessions.get(sessionId)
+    if (!session) return
+
+    const atual = new Set(session.skipped ?? [])
+    if (skipped) atual.add(workoutItemId)
+    else atual.delete(workoutItemId)
+
+    await db.sessions.update(sessionId, { skipped: [...atual] })
+  })
+}
+
 type SessionNotes = Pick<
   Session,
   'notes' | 'feeling' | 'strongPoints' | 'improvePoints'
