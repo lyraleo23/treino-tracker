@@ -478,6 +478,14 @@ export interface Session {
   workoutName: string
   startedAt: number
   finishedAt?: number
+  /**
+   * Exercícios que a pessoa decidiu não fazer nesta sessão — `workoutItemId`,
+   * a mesma chave que a tela usa para identificar a linha. Guardar o pulo aqui,
+   * e não como uma série de zero repetições, mantém `setLogs` só com o que
+   * aconteceu de fato: nenhum agregado — progressão, gráfico, volume — precisa
+   * aprender a ignorar linha falsa.
+   */
+  skipped?: string[]
   notes?: string
   feeling?: string
   strongPoints?: string
