@@ -41,6 +41,7 @@ import { ExercisePhoto } from '../components/ExercisePhoto'
 import { SetBlockModal } from '../components/SetBlockModal'
 import { SuggestionBanner } from '../components/SuggestionBanner'
 import {
+  ArrowUpIcon,
   ChartIcon,
   CheckIcon,
   NoteIcon,
@@ -80,6 +81,9 @@ function toInput(value: number | undefined): string {
   if (value === undefined) return ''
   return String(value).replace('.', ',')
 }
+
+/** O que a sugestão automática virou nesta sessão; ausente enquanto está na tela. */
+type SuggestionOutcome = 'aplicada' | 'dispensada'
 
 interface CurrentTarget {
   blockId: string
@@ -142,7 +146,13 @@ export function SessionPage() {
   const [drafts, setDrafts] = useState<Drafts>({})
   const [extraSets, setExtraSets] = useState<Record<string, number>>({})
   const [openNotes, setOpenNotes] = useState<Record<string, boolean>>({})
-  const [dismissed, setDismissed] = useState<Record<string, boolean>>({})
+  /** Marcas de "subir na próxima" tocadas antes de a série ser concluída. */
+  const [marks, setMarks] = useState<Record<string, boolean>>({})
+  /**
+   * Por exercício. Distinguir aplicada de dispensada importa para as marcas
+   * manuais: aplicada, valem as cargas da sugestão; dispensada, as marcas voltam.
+   */
+  const [outcomes, setOutcomes] = useState<Record<string, SuggestionOutcome>>({})
   const [confirmDiscard, setConfirmDiscard] = useState(false)
   const [confirmFinish, setConfirmFinish] = useState(false)
   // Só guardam o que o usuário abriu/fechou na mão; o resto é derivado do
@@ -418,8 +428,46 @@ export function SessionPage() {
       }
       return next
     })
-    setDismissed((current) => ({ ...current, [row.item.exerciseId]: true }))
+    setOutcomes((current) => ({ ...current, [row.item.exerciseId]: 'aplicada' }))
   }
+
+  /**
+   * As marcas manuais de subir carga valem quando não há sugestão automática ou
+   * quando ela foi dispensada. A automática tem prioridade: enquanto está na
+   * tela, as marcas esperam; aplicada, quem manda são as cargas dela.
+   */
+  const marksApply = (row: Row) =>
+    !suggestions.has(row.item.exerciseId) ||
+    outcomes[row.item.exerciseId] === 'dispensada'
+
+  /**
+   * O histórico que preenche o bloco. A execução mais recente do exercício
+   * manda, venha do treino que vier — o bloco é reencontrado lá pelo papel que
+   * exerce. O histórico do próprio bloco cobre o que ela não tem: um back-off
+   * que só existe neste treino, por exemplo.
+   */
+  function historyOf(row: Row, block: SetBlock) {
+    const previous = previousByExercise.get(row.item.exerciseId)
+    const fromRole = previous?.byRole.get(blockRole(block, row.blocks))
+    return {
+      previous,
+      history: fromRole ?? lastByBlock.get(block.id),
+      fromOtherWorkout: !!fromRole && !previous?.sameWorkout,
+    }
+  }
+
+  /** Séries que a pessoa marcou para subir da última vez, neste exercício. */
+  const markedLastTime = (row: Row) =>
+    row.blocks
+      .filter((block) => block.target.kind !== 'cardio')
+      .reduce(
+        (sum, block) =>
+          sum +
+          [...(historyOf(row, block).history?.bySetIndex.values() ?? [])].filter(
+            (log) => log.increaseNext,
+          ).length,
+        0,
+      )
 
   async function handleFinish() {
     if (!sessionId) return
@@ -479,6 +527,7 @@ export function SessionPage() {
           {rows.map((row) => {
             const { item, exercise, blocks } = row
             const suggestion = suggestions.get(item.exerciseId)
+            const marcadas = markedLastTime(row)
 
             const done = isExerciseDone(row)
             const expanded = isExerciseOpen(row)
@@ -564,20 +613,31 @@ export function SessionPage() {
                   </p>
                 )}
 
-                {!rowSkipped && expanded && suggestion && !dismissed[item.exerciseId] && (
-                  <SuggestionBanner
-                    suggestion={suggestion}
-                    step={stepOf(row)}
-                    preview={(delta) => proposalFor(row, suggestion, delta)}
-                    blocks={blocks}
-                    onApply={(entries) => applyLadder(row, entries)}
-                    onDismiss={() =>
-                      setDismissed((current) => ({
-                        ...current,
-                        [item.exerciseId]: true,
-                      }))
-                    }
-                  />
+                {!rowSkipped && expanded && suggestion && !outcomes[item.exerciseId] && (
+                  <>
+                    <SuggestionBanner
+                      suggestion={suggestion}
+                      step={stepOf(row)}
+                      preview={(delta) => proposalFor(row, suggestion, delta)}
+                      blocks={blocks}
+                      onApply={(entries) => applyLadder(row, entries)}
+                      onDismiss={() =>
+                        setOutcomes((current) => ({
+                          ...current,
+                          [item.exerciseId]: 'dispensada',
+                        }))
+                      }
+                    />
+                    {/* Sem isto as marcas somem sem explicação enquanto a
+                        sugestão está na tela. */}
+                    {marcadas > 0 && (
+                      <p className="hint set-bump" style={{ margin: '6px 0 0' }}>
+                        {marcadas === 1
+                          ? '↑ Você também marcou 1 série para subir. Ela vale se tocar em "Agora não".'
+                          : `↑ Você também marcou ${marcadas} séries para subir. Elas valem se tocar em "Agora não".`}
+                      </p>
+                    )}
+                  </>
                 )}
 
                 {!rowSkipped && expanded && blocks.length === 0 && (
@@ -592,14 +652,7 @@ export function SessionPage() {
                   const isCardioRow = block.target.kind === 'cardio'
                   const cardioFields = exercise.cardioFields ?? DEFAULT_CARDIO_FIELDS
 
-                  // A execução mais recente do exercício manda, venha do treino
-                  // que vier — o bloco é reencontrado lá pelo papel que exerce.
-                  // O histórico do próprio bloco cobre o que ela não tem: um
-                  // back-off que só existe neste treino, por exemplo.
-                  const previous = previousByExercise.get(item.exerciseId)
-                  const fromRole = previous?.byRole.get(blockRole(block, blocks))
-                  const history = fromRole ?? lastByBlock.get(block.id)
-                  const fromOtherWorkout = !!fromRole && !previous?.sameWorkout
+                  const { previous, history, fromOtherWorkout } = historyOf(row, block)
 
                   const last = history?.heaviest
                   const fallback = lastByExercise.get(item.exerciseId)
@@ -690,6 +743,7 @@ export function SessionPage() {
                           <span />
                           <span>Peso (kg)</span>
                           <span>{isTimeRow ? 'Tempo (s)' : 'Reps'}</span>
+                          <span />
                           <span />
                           <span />
                         </div>
@@ -786,11 +840,21 @@ export function SessionPage() {
                         // volta com o peso da 2ª série, não com o da última.
                         const before = history?.bySetIndex.get(setIndex)
 
+                        // Marcada da última vez para subir: volta com um passo
+                        // do aparelho a mais. Só até ser concluída — dali em
+                        // diante o que vale é o registrado.
+                        const bumpFrom =
+                          !log && before?.increaseNext && marksApply(row) ? before : undefined
+                        const bumped =
+                          bumpFrom?.weight !== undefined && bumpFrom.weight > 0
+                            ? Number((bumpFrom.weight + stepOf(row)).toFixed(2))
+                            : undefined
+
                         const weightValue =
                           draft.weight ??
                           (log
                             ? toInput(log.weight)
-                            : (toInput(before?.weight) || carryWeight))
+                            : (toInput(bumped ?? before?.weight) || carryWeight))
                         // Vindo de outro treino, a carga se aproveita mas as reps
                         // não: o mesmo exercício pode ser 5–6 lá e 10–12 aqui,
                         // então quem manda é o alvo deste bloco.
@@ -807,10 +871,14 @@ export function SessionPage() {
                           draft.seconds ??
                           (log ? toInput(log.seconds) : toInput(targetSeconds(block.target)))
                         const noteValue = draft.note ?? log?.note ?? ''
+                        // A marca desta sessão, para a próxima vez.
+                        const marked = marks[key] ?? !!log?.increaseNext
 
                         carryWeight = weightValue
 
-                        const persist = (existing: SetLog | undefined) =>
+                        // Todo salvamento leva a marca: sair do campo de peso
+                        // regrava a série e, sem ela, apagaria o ↑.
+                        const persist = (existing: SetLog | undefined, increaseNext = marked) =>
                           saveSetLog({
                             id: existing?.id,
                             sessionId: session.id,
@@ -822,6 +890,7 @@ export function SessionPage() {
                             reps: isTimeRow ? undefined : parseNumber(repsValue),
                             seconds: isTimeRow ? parseNumber(secondsValue) : undefined,
                             note: noteValue,
+                            increaseNext,
                           })
 
                         const noteOpen = openNotes[key] || noteValue.length > 0
@@ -840,7 +909,9 @@ export function SessionPage() {
                               <span className="set-row__index">{setIndex + 1}</span>
 
                               <input
-                                className="input input--center"
+                                className={
+                                  bumpFrom ? 'input input--center input--bump' : 'input input--center'
+                                }
                                 inputMode="decimal"
                                 placeholder="—"
                                 aria-label={`Peso da série ${setIndex + 1}`}
@@ -904,7 +975,38 @@ export function SessionPage() {
                               >
                                 <NoteIcon />
                               </button>
+
+                              <button
+                                type="button"
+                                className={marked ? 'bump-btn is-active' : 'bump-btn'}
+                                aria-label={
+                                  marked
+                                    ? `Não subir a carga da série ${setIndex + 1} na próxima vez`
+                                    : `Subir a carga da série ${setIndex + 1} na próxima vez`
+                                }
+                                aria-pressed={marked}
+                                onClick={() => {
+                                  setMarks((current) => ({ ...current, [key]: !marked }))
+                                  if (log) void persist(log, !marked)
+                                }}
+                              >
+                                <ArrowUpIcon />
+                              </button>
                             </div>
+
+                            {bumpFrom && (
+                              <div className="set-bump">
+                                {bumped !== undefined
+                                  ? `↑ Você marcou para subir · antes ${formatWeight(bumpFrom.weight)}`
+                                  : '↑ Você marcou para subir a carga desta série'}
+                              </div>
+                            )}
+
+                            {marked && (
+                              <div className="set-bump">
+                                {`↑ Na próxima vez: +${formatWeight(stepOf(row))} nesta série`}
+                              </div>
+                            )}
 
                             {noteOpen && (
                               <input

@@ -994,6 +994,7 @@ export async function saveSetLog(data: {
   heartRate?: number
   calories?: number
   note?: string
+  increaseNext?: boolean
 }): Promise<string> {
   const measures = {
     weight: data.weight,
@@ -1006,6 +1007,8 @@ export async function saveSetLog(data: {
     heartRate: data.heartRate,
     calories: data.calories,
     note: data.note?.trim() || undefined,
+    // `undefined` no update apaga o campo: desmarcar não deixa `false` gravado.
+    increaseNext: data.increaseNext ? (true as const) : undefined,
   }
 
   if (data.id) {

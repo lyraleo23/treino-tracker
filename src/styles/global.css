@@ -732,7 +732,7 @@ h3 {
 
 .set-row {
   display: grid;
-  grid-template-columns: 20px 1fr 1fr 42px 30px;
+  grid-template-columns: 20px 1fr 1fr 42px 30px 30px;
   align-items: center;
   gap: 6px;
   padding: 6px 0;
@@ -740,10 +740,11 @@ h3 {
 }
 
 .set-row--time {
-  grid-template-columns: 20px 0.8fr 1.6fr 42px 30px;
+  grid-template-columns: 20px 0.8fr 1.6fr 42px 30px 30px;
 }
 
-.note-btn {
+.note-btn,
+.bump-btn {
   display: flex;
   align-items: center;
   justify-content: center;
@@ -757,13 +758,31 @@ h3 {
   -webkit-tap-highlight-color: transparent;
 }
 
-.note-btn svg {
+.note-btn svg,
+.bump-btn svg {
   width: 18px;
   height: 18px;
 }
 
-.note-btn.has-note {
+.note-btn.has-note,
+.bump-btn.is-active {
   color: var(--accent);
+}
+
+/* Subir na mão. O peso que já veio subido tem borda tracejada: verde cheio é a
+   série concluída, e as duas não podem se confundir. */
+.input--bump {
+  border-style: dashed;
+  border-color: var(--accent);
+  color: var(--accent);
+  font-weight: 700;
+}
+
+.set-bump {
+  margin: -2px 0 6px 26px;
+  color: var(--accent);
+  font-size: 12px;
+  font-weight: 600;
 }
 
 .set-note {
@@ -810,7 +829,7 @@ h3 {
 
 .set-heads {
   display: grid;
-  grid-template-columns: 20px 1fr 1fr 42px 30px;
+  grid-template-columns: 20px 1fr 1fr 42px 30px 30px;
   gap: 6px;
   color: var(--text-faint);
   font-size: 11px;
@@ -821,7 +840,7 @@ h3 {
 }
 
 .set-heads--time {
-  grid-template-columns: 20px 0.8fr 1.6fr 42px 30px;
+  grid-template-columns: 20px 0.8fr 1.6fr 42px 30px 30px;
 }
 
 .timer {

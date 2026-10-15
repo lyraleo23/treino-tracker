@@ -511,6 +511,13 @@ export interface SetLog {
   heartRate?: number
   calories?: number
   note?: string
+  /**
+   * A pessoa marcou que a carga desta série pode subir: na próxima execução do
+   * exercício, a mesma série vem com o peso daqui mais o passo do aparelho.
+   * Independe da sugestão automática e não entra na contagem dela. Sem índice,
+   * por isso `true` e não `Flag`; ausente quando não foi marcada.
+   */
+  increaseNext?: true
   completedAt: number
 }
 
