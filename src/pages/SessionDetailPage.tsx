@@ -179,7 +179,14 @@ export function SessionDetailPage() {
                             {log.setIndex + 1}
                             {log.note && <div className="block__hint">{log.note}</div>}
                           </td>
-                          <td>{describe(log)}</td>
+                          <td>
+                            {describe(log)}
+                            {log.increaseNext && (
+                              <span className="chip chip--accent" style={{ marginLeft: 6 }}>
+                                ↑ subir
+                              </span>
+                            )}
+                          </td>
                         </tr>
                       ))}
                     </tbody>
