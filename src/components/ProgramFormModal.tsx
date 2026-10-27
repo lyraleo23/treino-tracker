@@ -121,7 +121,8 @@ export function ProgramFormModal({
               onChange={(event) => setTarget(Number(event.target.value) || 0)}
             />
             <span className="hint">
-              Conta as sessões de todos os treinos desta bateria, somadas.
+              Conta as sessões de todos os treinos desta bateria, somadas — menos os
+              avulsos, que ficam fora da rotação.
             </span>
           </div>
         )}

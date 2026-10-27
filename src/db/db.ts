@@ -409,6 +409,13 @@ export interface Workout {
   order: number
   archived: Flag
   createdAt: number
+  /**
+   * Treino avulso — o aeróbico que entra além do A/B/C. Continua na lista e
+   * pode ser iniciado a qualquer hora, mas a vez passa direto por ele e as
+   * sessões dele não contam no ciclo do programa. Sem índice, por isso `true`
+   * e não `Flag`; ausente quando o treino está na rotação.
+   */
+  outOfRotation?: true
 }
 
 export type Target =

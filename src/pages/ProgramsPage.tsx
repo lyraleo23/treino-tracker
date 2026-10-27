@@ -33,9 +33,9 @@ export function ProgramsPage() {
     const sessions = await db.sessions.toArray()
 
     const rows: ProgramCard[] = programs.map((program) => {
-      const ids = new Set(
-        workouts.filter((w) => w.programId === program.id).map((w) => w.id),
-      )
+      const own = workouts.filter((w) => w.programId === program.id)
+      const ids = new Set(own.map((w) => w.id))
+      const inRotation = new Set(own.filter((w) => !w.outOfRotation).map((w) => w.id))
       const finished = sessions.filter(
         (s) => ids.has(s.workoutId) && s.finishedAt !== undefined,
       )
@@ -44,8 +44,11 @@ export function ProgramsPage() {
       return {
         program,
         workouts: ids.size,
-        // O ciclo do programa soma as sessões de todos os treinos dele.
-        cycleDone: finished.filter((s) => s.startedAt >= cycleStart).length,
+        // O ciclo do programa soma as sessões de todos os treinos dele que
+        // estão na rotação; o avulso é adicional e não conta.
+        cycleDone: finished.filter(
+          (s) => inRotation.has(s.workoutId) && s.startedAt >= cycleStart,
+        ).length,
         lastSession:
           finished.length > 0 ? Math.max(...finished.map((s) => s.finishedAt!)) : undefined,
       }
@@ -104,7 +107,9 @@ export function ProgramsPage() {
                         {active ? 'ativo' : 'arquivado'}
                       </span>
                       {cycle && (
-                        <span className={cycle.expired ? 'chip chip--warn' : 'chip'}>
+                        <span
+                          className={cycle.expired || cycle.ending ? 'chip chip--warn' : 'chip'}
+                        >
                           {cycle.label}
                         </span>
                       )}

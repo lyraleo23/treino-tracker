@@ -213,9 +213,21 @@ export function formatBlockLabel(block: SetBlock, blocks: SetBlock[]): string {
   return `${base} ${sameKind.findIndex((other) => other.id === block.id) + 1}`
 }
 
+/**
+ * A partir de quando o ciclo está "perto do fim": a última semana, ou as
+ * três últimas sessões — uma volta de A/B/C, tempo de montar a próxima
+ * bateria antes de a atual acabar.
+ */
+const CYCLE_ENDING_DAYS = 7
+const CYCLE_ENDING_SESSIONS = 3
+
 export interface CycleStatus {
   label: string
   expired: boolean
+  /** Falta pouco, mas ainda não acabou. */
+  ending: boolean
+  /** Tarja da tela de treinos; ausente enquanto o fim está longe. */
+  warning?: { title: string; text: string }
 }
 
 /** "sessão 5 de 12" · "vence em 12 dias" · "ciclo concluído". */
@@ -226,19 +238,71 @@ export function formatCycle(
   if (!cycle) return undefined
 
   if (cycle.kind === 'sessions') {
-    const expired = doneSessions >= cycle.target
+    const left = cycle.target - doneSessions
+    if (left <= 0) {
+      return {
+        label: 'ciclo concluído',
+        expired: true,
+        ending: false,
+        warning: {
+          title: 'Ciclo concluído',
+          text: `As ${cycle.target} sessões do programa foram feitas. Renove o ciclo ou monte a próxima bateria — dá para seguir treinando enquanto isso.`,
+        },
+      }
+    }
+
+    const ending = left <= CYCLE_ENDING_SESSIONS
     return {
-      label: expired
-        ? 'ciclo concluído'
-        : `sessão ${doneSessions + 1} de ${cycle.target}`,
-      expired,
+      label: `sessão ${doneSessions + 1} de ${cycle.target}`,
+      expired: false,
+      ending,
+      warning: ending
+        ? {
+            title: left === 1 ? 'Última sessão do ciclo' : 'Ciclo perto do fim',
+            text:
+              left === 1
+                ? 'A próxima sessão fecha o programa. Bom momento para montar a próxima bateria.'
+                : `Faltam ${left} sessões para fechar o programa. Bom momento para montar a próxima bateria.`,
+          }
+        : undefined,
     }
   }
 
-  const days = Math.ceil((cycle.until - Date.now()) / 86400000)
-  if (days < 0) return { label: 'ciclo vencido', expired: true }
-  if (days === 0) return { label: 'vence hoje', expired: false }
-  return { label: `vence em ${days} ${days === 1 ? 'dia' : 'dias'}`, expired: false }
+  // Dias de calendário, como o `formatRelativeDay`: o `until` é o fim do dia
+  // escolhido, então no próprio dia isto dá 0 ("vence hoje") e só fica
+  // negativo quando o dia já passou.
+  const until = formatDate(cycle.until)
+  const days = Math.round((startOfDay(cycle.until) - startOfDay(Date.now())) / 86400000)
+
+  if (days < 0) {
+    return {
+      label: 'ciclo vencido',
+      expired: true,
+      ending: false,
+      warning: {
+        title: 'Ciclo vencido',
+        text: `O programa venceu em ${until}. Renove o ciclo ou monte a próxima bateria — dá para seguir treinando enquanto isso.`,
+      },
+    }
+  }
+
+  const label =
+    days === 0 ? 'vence hoje' : `vence em ${days} ${days === 1 ? 'dia' : 'dias'}`
+  const ending = days <= CYCLE_ENDING_DAYS
+  return {
+    label,
+    expired: false,
+    ending,
+    warning: ending
+      ? {
+          title: days === 0 ? 'O programa vence hoje' : 'Programa perto do vencimento',
+          text:
+            days === 0
+              ? 'Hoje é o último dia do ciclo. Bom momento para montar a próxima bateria.'
+              : `${days === 1 ? 'Falta 1 dia' : `Faltam ${days} dias`}: o ciclo vence em ${until}. Bom momento para montar a próxima bateria.`,
+        }
+      : undefined,
+  }
 }
 
 /** "2 feeder · 2 working · 8 séries" — resumo do exercício na lista do treino. */
