@@ -138,3 +138,10 @@ export const SkipIcon = (props: IconProps) => (
     <path d="M17 5.5h2v13h-2z" />
   </Icon>
 )
+
+export const AlertIcon = (props: IconProps) => (
+  <Icon {...props}>
+    <path d="M10.3 4.2 2.8 17.5A2 2 0 0 0 4.5 20.5h15a2 2 0 0 0 1.7-3L13.7 4.2a2 2 0 0 0-3.4 0Z" />
+    <path d="M12 9.5v4.5M12 17.2v.1" />
+  </Icon>
+)

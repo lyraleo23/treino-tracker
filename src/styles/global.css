@@ -169,6 +169,29 @@ h3 {
   margin-top: 2px;
 }
 
+/* O treino da vez: o card para onde a tela inteira aponta. Fundo e borda na
+   cor de destaque o separam da lista logo abaixo, que repete os treinos. */
+.card--next {
+  background: color-mix(in srgb, var(--accent) 7%, var(--surface));
+  border-color: color-mix(in srgb, var(--accent) 55%, transparent);
+  padding: 16px;
+}
+
+.card__title--lg {
+  font-size: 22px;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  margin: 2px 0 2px;
+}
+
+.eyebrow {
+  color: var(--accent);
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
 .card-button {
   display: block;
   width: 100%;
@@ -238,6 +261,11 @@ h3 {
   min-height: 34px;
   padding: 0 11px;
   font-size: 14px;
+}
+
+.btn--lg {
+  min-height: 50px;
+  font-size: 17px;
 }
 
 .btn--icon {
@@ -952,6 +980,32 @@ h3 {
 .banner--descer {
   background: rgba(251, 191, 36, 0.13);
   border-color: color-mix(in srgb, var(--warn) 35%, transparent);
+}
+
+/* Tarja de aviso do ciclo. O chip discreto de antes passava batido; aqui a
+   faixa lateral grossa e o título na cor do alerta são o que pega o olho ao
+   abrir o app. Âmbar enquanto falta pouco, vermelho depois do fim. */
+.banner--alert {
+  background: rgba(251, 191, 36, 0.13);
+  border-color: color-mix(in srgb, var(--warn) 45%, transparent);
+  border-left: 5px solid var(--warn);
+}
+
+.banner--alert .banner__text strong {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--warn);
+}
+
+.banner--alert.is-expired {
+  background: var(--danger-soft);
+  border-color: color-mix(in srgb, var(--danger) 45%, transparent);
+  border-left-color: var(--danger);
+}
+
+.banner--alert.is-expired .banner__text strong {
+  color: var(--danger);
 }
 
 .banner--escada {

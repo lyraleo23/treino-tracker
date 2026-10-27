@@ -89,7 +89,9 @@ export function WorkoutEditPage() {
     <>
       <PageHeader
         title={workout.name}
-        subtitle={`${rows.length} ${rows.length === 1 ? 'exercício' : 'exercícios'}`}
+        subtitle={`${rows.length} ${rows.length === 1 ? 'exercício' : 'exercícios'}${
+          workout.outOfRotation ? ' · avulso' : ''
+        }`}
         back
         backTo="/"
         backLabel="Treinos"
@@ -391,8 +393,8 @@ export function WorkoutEditPage() {
         <WorkoutFormModal
           workout={workout}
           onClose={() => setRenaming(false)}
-          onSave={async ({ name }) => {
-            await updateWorkout(workout.id, { name })
+          onSave={async (draft) => {
+            await updateWorkout(workout.id, draft)
             setRenaming(false)
           }}
         />

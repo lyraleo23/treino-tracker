@@ -556,6 +556,7 @@ export async function copyWorkoutToProgram(
         order: (last?.order ?? -1) + 1,
         archived: 0,
         createdAt: Date.now(),
+        outOfRotation: source.outOfRotation,
       }
       await db.workouts.add(copy)
 
@@ -602,7 +603,12 @@ export async function duplicateProgram(id: string, name: string): Promise<string
 
 // --- Treinos ------------------------------------------------------------
 
-export async function createWorkout(programId: string, name: string): Promise<string> {
+interface WorkoutDraft {
+  name: string
+  inRotation: boolean
+}
+
+export async function createWorkout(programId: string, data: WorkoutDraft): Promise<string> {
   const last = await db.workouts
     .where('[programId+order]')
     .between([programId, Dexie.minKey], [programId, Dexie.maxKey])
@@ -611,17 +617,23 @@ export async function createWorkout(programId: string, name: string): Promise<st
   const workout: Workout = {
     id: newId(),
     programId,
-    name: name.trim(),
+    name: data.name.trim(),
     order: (last?.order ?? -1) + 1,
     archived: 0,
     createdAt: Date.now(),
+    outOfRotation: data.inRotation ? undefined : true,
   }
   await db.workouts.add(workout)
   return workout.id
 }
 
-export async function updateWorkout(id: string, data: { name: string }): Promise<void> {
-  await db.workouts.update(id, { name: data.name.trim() })
+export async function updateWorkout(id: string, data: WorkoutDraft): Promise<void> {
+  await db.workouts.update(id, {
+    name: data.name.trim(),
+    // `undefined` no update apaga o campo: voltar para a rotação não deixa
+    // `false` gravado.
+    outOfRotation: data.inRotation ? undefined : true,
+  })
 }
 
 /** Apaga o treino e seus itens; as sessões já realizadas continuam no histórico. */

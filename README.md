@@ -40,8 +40,14 @@ sem backend e sem cadastro. Todos os dados ficam no próprio aparelho (IndexedDB
 - **Foto e vídeo por exercício**: foto da câmera ou galeria, redimensionada e
   guardada no próprio app (funciona offline), mais um link de vídeo aberto no
   navegador com um toque durante o treino.
-- **Ciclo do treino**: data-limite ou número de sessões. O card mostra o progresso e
-  avisa quando o ciclo termina, sem nunca impedir de treinar.
+- **Treino da vez**: a tela de treinos abre com o próximo da rotação em destaque — o
+  seguinte, na ordem do programa, ao último feito (depois do C volta ao A). Treinos
+  marcados como **avulso** (o aeróbico adicional, por exemplo) ficam na lista e podem
+  ser feitos a qualquer hora, mas a vez passa direto por eles e as sessões deles não
+  contam no ciclo.
+- **Ciclo do treino**: data-limite ou número de sessões. Na última semana ou nas três
+  últimas sessões aparece uma tarja de aviso no topo da tela de treinos; vencido, ela
+  fica vermelha e oferece renovar o ciclo — sem nunca impedir de treinar.
 - **Backup**: dois caminhos separados — **importar plano** mescla e preserva todo o
   histórico; **restaurar backup** substitui tudo. Arquivos de versões anteriores são
   convertidos na importação.

@@ -14,14 +14,11 @@ import { PageHeader } from '../components/PageHeader'
 import { EmptyState } from '../components/EmptyState'
 import { Modal } from '../components/Modal'
 import { WorkoutFormModal } from '../components/WorkoutFormModal'
-import { ArrowDownIcon, ArrowUpIcon, PlusIcon } from '../components/icons'
-import { formatCycle, formatDate } from '../lib/format'
+import { AlertIcon, ArrowDownIcon, ArrowUpIcon, PlayIcon, PlusIcon } from '../components/icons'
+import { formatCycle, formatDate, formatRelativeDay } from '../lib/format'
+import { rotationTurn, type RotationEntry } from '../lib/rotation'
 
-interface WorkoutCard {
-  workout: Workout
-  exercises: number
-  lastSession?: number
-}
+type WorkoutCard = RotationEntry
 
 export function WorkoutsPage() {
   const navigate = useNavigate()
@@ -54,8 +51,9 @@ export function WorkoutsPage() {
       }
     })
 
-    // A validade é do programa: conta as sessões de todos os treinos dele.
-    const ids = new Set(workouts.map((w) => w.id))
+    // A validade é do programa: conta as sessões de todos os treinos dele que
+    // estão na rotação — o avulso é adicional, não adianta o fim do ciclo.
+    const ids = new Set(workouts.filter((w) => !w.outOfRotation).map((w) => w.id))
     const cycleStart = program?.cycleStartedAt ?? 0
     const cycleDone = sessions.filter(
       (s) => ids.has(s.workoutId) && s.finishedAt !== undefined && s.startedAt >= cycleStart,
@@ -65,7 +63,7 @@ export function WorkoutsPage() {
       .filter((s) => s.finishedAt === undefined)
       .sort((a, b) => b.startedAt - a.startedAt)[0]
 
-    return { program, cards, cycleDone, open }
+    return { program, cards, cycleDone, open, ...rotationTurn(cards) }
   }, [])
 
   async function handleStart(workout: Workout) {
@@ -82,8 +80,11 @@ export function WorkoutsPage() {
     navigate(`/sessao/${await startSession(workout)}`)
   }
 
-  async function handleCreate(program: Program, name: string) {
-    const id = await createWorkout(program.id, name)
+  async function handleCreate(
+    program: Program,
+    draft: { name: string; inRotation: boolean },
+  ) {
+    const id = await createWorkout(program.id, draft)
     setCreating(false)
     navigate(`/treinos/${id}`)
   }
@@ -91,7 +92,12 @@ export function WorkoutsPage() {
   const program = data?.program
   const cards = data?.cards ?? []
   const open = data?.open
+  const next = data?.next
+  const last = data?.last
   const cycle = formatCycle(program?.cycle, data?.cycleDone ?? 0)
+  // A sessão aberta do próprio treino da vez continua pelo card dele; o aviso
+  // de sessão em andamento fica para quando o que está aberto é outro treino.
+  const openNext = open && open.workoutId === next?.workout.id ? open : undefined
 
   return (
     <>
@@ -110,7 +116,7 @@ export function WorkoutsPage() {
       />
 
       <div className="page">
-        {open && (
+        {open && !openNext && (
           <div className="banner" style={{ marginBottom: 14 }}>
             <div className="banner__text">
               <strong>Sessão em andamento</strong>
@@ -126,20 +132,82 @@ export function WorkoutsPage() {
           </div>
         )}
 
-        {cycle && (
-          <div className="row row--between" style={{ marginBottom: 14 }}>
-            <span className={cycle.expired ? 'chip chip--warn' : 'chip'}>{cycle.label}</span>
-            {cycle.expired && program && (
+        {cycle?.warning && program ? (
+          <div
+            role="alert"
+            className={`banner banner--stacked banner--alert${cycle.expired ? ' is-expired' : ''}`}
+            style={{ marginBottom: 14 }}
+          >
+            <div className="banner__text">
+              <strong>
+                <AlertIcon width={18} height={18} />
+                {cycle.warning.title}
+              </strong>
+              {cycle.warning.text}
+            </div>
+            <div className="row" style={{ gap: 6, justifyContent: 'flex-end' }}>
+              {cycle.expired && (
+                <button
+                  type="button"
+                  className="btn btn--sm"
+                  onClick={() => void renewProgramCycle(program.id)}
+                >
+                  Renovar ciclo
+                </button>
+              )}
               <button
                 type="button"
                 className="btn btn--sm"
-                onClick={() => void renewProgramCycle(program.id)}
+                onClick={() => navigate('/programas')}
               >
-                Renovar ciclo
+                Próxima bateria
               </button>
-            )}
+            </div>
           </div>
+        ) : (
+          cycle && (
+            <div className="row" style={{ marginBottom: 14 }}>
+              <span className="chip">{cycle.label}</span>
+            </div>
+          )
         )}
+
+        {next && (
+          <section className="card card--next" style={{ marginBottom: 6 }}>
+            <div className="eyebrow">Treino da vez</div>
+            <div className="card__title card__title--lg">{next.workout.name}</div>
+            <div className="card__meta">
+              {next.exercises} {next.exercises === 1 ? 'exercício' : 'exercícios'}
+              {next.lastSession
+                ? ` · última: ${formatRelativeDay(next.lastSession)}`
+                : ' · nunca feito'}
+            </div>
+            {last && last !== next && last.lastSession !== undefined && (
+              <div className="card__meta">
+                Último feito: {last.workout.name} · {formatRelativeDay(last.lastSession)}
+              </div>
+            )}
+
+            <button
+              type="button"
+              className="btn btn--primary btn--block btn--lg"
+              style={{ marginTop: 14 }}
+              onClick={() =>
+                openNext ? navigate(`/sessao/${openNext.id}`) : void handleStart(next.workout)
+              }
+            >
+              <PlayIcon width={18} height={18} />
+              {openNext ? 'Continuar treino' : 'Iniciar treino'}
+            </button>
+            {openNext && (
+              <p className="hint" style={{ marginBottom: 0 }}>
+                Sessão em andamento, iniciada {formatDate(openNext.startedAt)}.
+              </p>
+            )}
+          </section>
+        )}
+
+        {next && <h2 className="section-title">Todos os treinos</h2>}
 
         {data && !program && (
           <EmptyState
@@ -185,6 +253,14 @@ export function WorkoutsPage() {
                     {exercises} {exercises === 1 ? 'exercício' : 'exercícios'}
                     {lastSession ? ` · última: ${formatDate(lastSession)}` : ' · nunca feito'}
                   </div>
+                  {(workout.id === next?.workout.id || workout.outOfRotation) && (
+                    <div className="row" style={{ gap: 6, marginTop: 6 }}>
+                      {workout.id === next?.workout.id && (
+                        <span className="chip chip--accent">da vez</span>
+                      )}
+                      {workout.outOfRotation && <span className="chip">avulso</span>}
+                    </div>
+                  )}
                 </div>
                 <div className="row" style={{ gap: 4 }}>
                   <button
@@ -209,9 +285,11 @@ export function WorkoutsPage() {
               </div>
 
               <div className="row" style={{ marginTop: 12 }}>
+                {/* Com o treino da vez em destaque lá em cima, o resto da lista
+                    não disputa com ele: os botões daqui ficam neutros. */}
                 <button
                   type="button"
-                  className="btn btn--primary"
+                  className={next ? 'btn' : 'btn btn--primary'}
                   style={{ flex: 1 }}
                   disabled={exercises === 0}
                   onClick={() => void handleStart(workout)}
@@ -251,7 +329,7 @@ export function WorkoutsPage() {
       {creating && program && (
         <WorkoutFormModal
           onClose={() => setCreating(false)}
-          onSave={({ name }) => void handleCreate(program, name)}
+          onSave={(draft) => void handleCreate(program, draft)}
         />
       )}
 
