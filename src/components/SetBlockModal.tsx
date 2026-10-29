@@ -59,9 +59,9 @@ const KIND_ORDER: BlockKind[] = [
   'interval',
 ]
 
-// 20s existe por causa do cluster, onde o respiro entre blocos é curto de
-// propósito — sem ele o tipo não daria para montar na mão.
-const REST_PRESETS = [20, 30, 60, 90, 120, 180]
+// 10s e 20s existem por causa do cluster, onde o respiro entre blocos é curto
+// de propósito — sem eles o tipo não daria para montar na mão.
+const REST_PRESETS = [10, 20, 30, 60, 90, 120, 180]
 
 function minutesLabel(seconds: number): string {
   return seconds % 60 === 0 ? `${seconds / 60}min` : `${seconds}s`
