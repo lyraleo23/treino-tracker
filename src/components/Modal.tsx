@@ -1,4 +1,6 @@
 import { useEffect, type ReactNode } from 'react'
+import { useScrollLock } from '../hooks/useScrollLock'
+import { CloseIcon } from './icons'
 
 interface Props {
   title: string
@@ -8,7 +10,15 @@ interface Props {
   actions?: ReactNode
 }
 
+/**
+ * Título e ações ficam presos nas pontas e só o miolo rola: num formulário
+ * comprido como o do bloco, os botões não somem lá embaixo. O × existe porque
+ * nem todo modal tem "Cancelar" — no de editar bloco, a ação da esquerda é
+ * "Remover" — e tocar no fundo é um alvo pequeno demais no iPhone.
+ */
 export function Modal({ title, onClose, children, actions }: Props) {
+  useScrollLock()
+
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.key === 'Escape') onClose()
@@ -29,8 +39,18 @@ export function Modal({ title, onClose, children, actions }: Props) {
       }}
     >
       <div className="modal">
-        <div className="modal__title">{title}</div>
-        {children}
+        <div className="modal__head">
+          <div className="modal__title">{title}</div>
+          <button
+            type="button"
+            className="btn btn--icon btn--ghost"
+            aria-label="Fechar"
+            onClick={onClose}
+          >
+            <CloseIcon />
+          </button>
+        </div>
+        <div className="modal__body">{children}</div>
         <div className="modal__actions">
           {actions ?? (
             <button type="button" className="btn" onClick={onClose}>

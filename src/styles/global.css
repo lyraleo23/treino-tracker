@@ -717,39 +717,74 @@ h3 {
 
 /* --- Modal ----------------------------------------------------------- */
 
+/* Com um modal aberto, a página de trás não rola: no iPhone o arrasto ia para
+   ela em vez de para o modal. Ver `useScrollLock`. */
+html.is-scroll-locked,
+html.is-scroll-locked body {
+  overflow: hidden;
+}
+
+/* O respiro de cima desconta a barra de status: sem ele o título do modal
+   entrava embaixo do relógio. */
 .modal-backdrop {
   position: fixed;
   inset: 0;
   z-index: 50;
   display: flex;
-  align-items: flex-end;
-  justify-content: center;
+  flex-direction: column;
+  justify-content: flex-end;
+  align-items: center;
   background: rgba(0, 0, 0, 0.6);
-  padding: 16px;
-  padding-bottom: calc(16px + env(safe-area-inset-bottom));
+  padding: calc(16px + env(safe-area-inset-top)) 16px
+    calc(16px + env(safe-area-inset-bottom));
+  overscroll-behavior: contain;
 }
 
+/* A altura vem do fundo (100% menos as margens), não de `dvh`: o modal nunca
+   passa da tela, e quem encolhe quando falta espaço é só o miolo. */
 .modal {
+  display: flex;
+  flex-direction: column;
   width: 100%;
   max-width: 560px;
-  max-height: 88dvh;
-  overflow-y: auto;
+  max-height: 100%;
+  min-height: 0;
+  overflow: hidden;
   background: var(--surface);
   border: 1px solid var(--border);
   border-radius: 18px;
-  padding: 18px;
+}
+
+.modal__head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: none;
+  padding: 12px 10px 0 18px;
 }
 
 .modal__title {
+  flex: 1;
+  min-width: 0;
   font-size: 18px;
   font-weight: 700;
-  margin-bottom: 14px;
+}
+
+.modal__body {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
+  padding: 8px 18px 16px;
 }
 
 .modal__actions {
   display: flex;
   gap: 10px;
-  margin-top: 18px;
+  flex: none;
+  padding: 12px 18px 16px;
+  border-top: 1px solid var(--border);
 }
 
 .modal__actions .btn {

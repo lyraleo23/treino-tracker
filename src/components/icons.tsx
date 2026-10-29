@@ -145,3 +145,9 @@ export const AlertIcon = (props: IconProps) => (
     <path d="M12 9.5v4.5M12 17.2v.1" />
   </Icon>
 )
+
+export const CloseIcon = (props: IconProps) => (
+  <Icon {...props}>
+    <path d="M6 6l12 12M18 6 6 18" />
+  </Icon>
+)
