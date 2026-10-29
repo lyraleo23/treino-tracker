@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { useLiveQuery } from 'dexie-react-hooks'
-import { db, type SetBlock, type SetLog } from '../db/db'
+import { db, nextLoadOf, type SetBlock, type SetLog } from '../db/db'
 import { discardSession, updateSessionNotes } from '../db/actions'
 import { PageHeader } from '../components/PageHeader'
 import { EmptyState } from '../components/EmptyState'
@@ -181,9 +181,14 @@ export function SessionDetailPage() {
                           </td>
                           <td>
                             {describe(log)}
-                            {log.increaseNext && (
+                            {nextLoadOf(log) === 'subir' && (
                               <span className="chip chip--accent" style={{ marginLeft: 6 }}>
                                 ↑ subir
+                              </span>
+                            )}
+                            {nextLoadOf(log) === 'diminuir' && (
+                              <span className="chip chip--warn" style={{ marginLeft: 6 }}>
+                                ↓ diminuir
                               </span>
                             )}
                           </td>

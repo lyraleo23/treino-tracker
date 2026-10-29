@@ -29,11 +29,13 @@ sem backend e sem cadastro. Todos os dados ficam no próprio aparelho (IndexedDB
   é preciso repetir o desempenho **na mesma carga** em duas sessões; mudar a carga
   recomeça a contagem. Reduzir a carga (série abaixo do mínimo da faixa) e endireitar
   a escada continuam olhando só a última sessão.
-- **Subir na mão**: o botão **↑** de cada série marca que a carga dela pode subir.
-  Na próxima vez que o exercício aparecer, em qualquer treino, aquela série vem com
-  o peso anterior mais o passo do aparelho, destacada. A marca não entra na contagem
-  da sugestão automática, e a automática tem prioridade: enquanto ela está na tela,
-  as marcas esperam; aplicada, valem as cargas dela; com *Agora não*, as marcas voltam.
+- **Subir ou diminuir na mão**: os botões **↑** e **↓** de cada série marcam que a
+  carga dela pode subir ou precisa diminuir — um de cada vez. Na próxima vez que o
+  exercício aparecer, em qualquer treino, aquela série vem com o peso anterior mais
+  (ou menos) o passo do aparelho, destacada em verde ou âmbar. As marcas não entram
+  na contagem da sugestão automática, e a automática tem prioridade: enquanto ela
+  está na tela, as marcas esperam; aplicada, valem as cargas dela; com *Agora não*,
+  as marcas voltam.
 - **Histórico e evolução**: lista de sessões, detalhe agrupado por bloco com as notas
   do treino (sensação geral, pontos fortes, pontos a melhorar) e, por exercício,
   gráfico de peso máximo / volume / repetições ao longo das sessões.

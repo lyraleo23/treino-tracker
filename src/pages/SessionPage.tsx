@@ -6,8 +6,10 @@ import {
   db,
   DEFAULT_CARDIO_FIELDS,
   DEFAULT_WEIGHT_STEP,
+  nextLoadOf,
   type CardioField,
   type Exercise,
+  type NextLoad,
   type SetBlock,
   type SetLog,
   type WorkoutItem,
@@ -41,6 +43,7 @@ import { ExercisePhoto } from '../components/ExercisePhoto'
 import { SetBlockModal } from '../components/SetBlockModal'
 import { SuggestionBanner } from '../components/SuggestionBanner'
 import {
+  ArrowDownIcon,
   ArrowUpIcon,
   ChartIcon,
   CheckIcon,
@@ -146,8 +149,11 @@ export function SessionPage() {
   const [drafts, setDrafts] = useState<Drafts>({})
   const [extraSets, setExtraSets] = useState<Record<string, number>>({})
   const [openNotes, setOpenNotes] = useState<Record<string, boolean>>({})
-  /** Marcas de "subir na próxima" tocadas antes de a série ser concluída. */
-  const [marks, setMarks] = useState<Record<string, boolean>>({})
+  /**
+   * Marcas de subir ou diminuir na próxima vez, tocadas nesta tela. `null` é a
+   * marca tirada — diferente de ausente, que cai no que está gravado na série.
+   */
+  const [marks, setMarks] = useState<Record<string, NextLoad | null>>({})
   /**
    * Por exercício. Distinguir aplicada de dispensada importa para as marcas
    * manuais: aplicada, valem as cargas da sugestão; dispensada, as marcas voltam.
@@ -432,8 +438,8 @@ export function SessionPage() {
   }
 
   /**
-   * As marcas manuais de subir carga valem quando não há sugestão automática ou
-   * quando ela foi dispensada. A automática tem prioridade: enquanto está na
+   * As marcas manuais de subir ou diminuir valem quando não há sugestão
+   * automática ou quando ela foi dispensada. A automática tem prioridade: enquanto está na
    * tela, as marcas esperam; aplicada, quem manda são as cargas dela.
    */
   const marksApply = (row: Row) =>
@@ -456,18 +462,30 @@ export function SessionPage() {
     }
   }
 
-  /** Séries que a pessoa marcou para subir da última vez, neste exercício. */
-  const markedLastTime = (row: Row) =>
-    row.blocks
-      .filter((block) => block.target.kind !== 'cardio')
-      .reduce(
-        (sum, block) =>
-          sum +
-          [...(historyOf(row, block).history?.bySetIndex.values() ?? [])].filter(
-            (log) => log.increaseNext,
-          ).length,
-        0,
-      )
+  /** Séries que a pessoa marcou da última vez neste exercício, por direção. */
+  function markedLastTime(row: Row): Record<NextLoad, number> {
+    const count = { subir: 0, diminuir: 0 }
+    for (const block of row.blocks) {
+      if (block.target.kind === 'cardio') continue
+      for (const log of historyOf(row, block).history?.bySetIndex.values() ?? []) {
+        const mark = nextLoadOf(log)
+        if (mark) count[mark] += 1
+      }
+    }
+    return count
+  }
+
+  /** "1 série para subir e 2 para diminuir. Elas valem se tocar em…" */
+  function describeWaitingMarks({ subir, diminuir }: Record<NextLoad, number>): string {
+    const series = (n: number) => (n === 1 ? '1 série' : `${n} séries`)
+    const partes = [
+      ...(subir > 0 ? [`${series(subir)} para subir`] : []),
+      ...(diminuir > 0 ? [`${subir > 0 ? diminuir : series(diminuir)} para diminuir`] : []),
+    ]
+    const seta = subir > 0 && diminuir > 0 ? '↕' : subir > 0 ? '↑' : '↓'
+    const vale = subir + diminuir === 1 ? 'Ela vale' : 'Elas valem'
+    return `${seta} Você também marcou ${partes.join(' e ')}. ${vale} se tocar em "Agora não".`
+  }
 
   async function handleFinish() {
     if (!sessionId) return
@@ -630,11 +648,14 @@ export function SessionPage() {
                     />
                     {/* Sem isto as marcas somem sem explicação enquanto a
                         sugestão está na tela. */}
-                    {marcadas > 0 && (
-                      <p className="hint set-bump" style={{ margin: '6px 0 0' }}>
-                        {marcadas === 1
-                          ? '↑ Você também marcou 1 série para subir. Ela vale se tocar em "Agora não".'
-                          : `↑ Você também marcou ${marcadas} séries para subir. Elas valem se tocar em "Agora não".`}
+                    {marcadas.subir + marcadas.diminuir > 0 && (
+                      <p
+                        className={
+                          marcadas.subir === 0 ? 'hint set-bump is-down' : 'hint set-bump'
+                        }
+                        style={{ margin: '6px 0 0' }}
+                      >
+                        {describeWaitingMarks(marcadas)}
                       </p>
                     )}
                   </>
@@ -741,8 +762,11 @@ export function SessionPage() {
                       {!isCardioRow && (
                         <div className={isTimeRow ? 'set-heads set-heads--time' : 'set-heads'}>
                           <span />
-                          <span>Peso (kg)</span>
+                          {/* "Peso (kg)" quebrava em duas linhas desde que as
+                              setas de carga estreitaram a coluna. */}
+                          <span>Kg</span>
                           <span>{isTimeRow ? 'Tempo (s)' : 'Reps'}</span>
+                          <span />
                           <span />
                           <span />
                           <span />
@@ -840,21 +864,30 @@ export function SessionPage() {
                         // volta com o peso da 2ª série, não com o da última.
                         const before = history?.bySetIndex.get(setIndex)
 
-                        // Marcada da última vez para subir: volta com um passo
-                        // do aparelho a mais. Só até ser concluída — dali em
-                        // diante o que vale é o registrado.
-                        const bumpFrom =
-                          !log && before?.increaseNext && marksApply(row) ? before : undefined
-                        const bumped =
-                          bumpFrom?.weight !== undefined && bumpFrom.weight > 0
-                            ? Number((bumpFrom.weight + stepOf(row)).toFixed(2))
+                        // Marcada da última vez para subir ou diminuir: volta
+                        // com um passo do aparelho a mais ou a menos. Só até ser
+                        // concluída — dali em diante o que vale é o registrado.
+                        const lastMark =
+                          !log && marksApply(row) ? nextLoadOf(before) : undefined
+                        const adjusted =
+                          lastMark && before?.weight !== undefined && before.weight > 0
+                            ? Number(
+                                (
+                                  before.weight +
+                                  (lastMark === 'subir' ? stepOf(row) : -stepOf(row))
+                                ).toFixed(2),
+                              )
                             : undefined
+                        // Com a carga de um passo só não há o que diminuir: a
+                        // série volta com o peso de antes e só o aviso fica.
+                        const adjustedWeight =
+                          adjusted !== undefined && adjusted > 0 ? adjusted : undefined
 
                         const weightValue =
                           draft.weight ??
                           (log
                             ? toInput(log.weight)
-                            : (toInput(bumped ?? before?.weight) || carryWeight))
+                            : (toInput(adjustedWeight ?? before?.weight) || carryWeight))
                         // Vindo de outro treino, a carga se aproveita mas as reps
                         // não: o mesmo exercício pode ser 5–6 lá e 10–12 aqui,
                         // então quem manda é o alvo deste bloco.
@@ -872,13 +905,19 @@ export function SessionPage() {
                           (log ? toInput(log.seconds) : toInput(targetSeconds(block.target)))
                         const noteValue = draft.note ?? log?.note ?? ''
                         // A marca desta sessão, para a próxima vez.
-                        const marked = marks[key] ?? !!log?.increaseNext
+                        const touched = marks[key]
+                        const mark = touched === undefined ? nextLoadOf(log) : (touched ?? undefined)
 
                         carryWeight = weightValue
 
                         // Todo salvamento leva a marca: sair do campo de peso
-                        // regrava a série e, sem ela, apagaria o ↑.
-                        const persist = (existing: SetLog | undefined, increaseNext = marked) =>
+                        // regrava a série e, sem ela, apagaria o ↑ ou o ↓.
+                        // `null` tira a marca: com `undefined` o padrão do
+                        // parâmetro entraria e regravaria a marca de agora.
+                        const persist = (
+                          existing: SetLog | undefined,
+                          nextLoad: NextLoad | null = mark ?? null,
+                        ) =>
                           saveSetLog({
                             id: existing?.id,
                             sessionId: session.id,
@@ -890,8 +929,16 @@ export function SessionPage() {
                             reps: isTimeRow ? undefined : parseNumber(repsValue),
                             seconds: isTimeRow ? parseNumber(secondsValue) : undefined,
                             note: noteValue,
-                            increaseNext,
+                            nextLoad: nextLoad ?? undefined,
                           })
+
+                        // Tocar na seta acesa tira a marca; na outra, troca a
+                        // direção — as duas nunca ficam ligadas juntas.
+                        const toggleMark = (direction: NextLoad) => {
+                          const next = mark === direction ? null : direction
+                          setMarks((current) => ({ ...current, [key]: next }))
+                          if (log) void persist(log, next)
+                        }
 
                         const noteOpen = openNotes[key] || noteValue.length > 0
 
@@ -909,9 +956,13 @@ export function SessionPage() {
                               <span className="set-row__index">{setIndex + 1}</span>
 
                               <input
-                                className={
-                                  bumpFrom ? 'input input--center input--bump' : 'input input--center'
-                                }
+                                className={[
+                                  'input input--center',
+                                  lastMark ? 'input--bump' : '',
+                                  lastMark === 'diminuir' ? 'is-down' : '',
+                                ]
+                                  .filter(Boolean)
+                                  .join(' ')}
                                 inputMode="decimal"
                                 placeholder="—"
                                 aria-label={`Peso da série ${setIndex + 1}`}
@@ -978,33 +1029,62 @@ export function SessionPage() {
 
                               <button
                                 type="button"
-                                className={marked ? 'bump-btn is-active' : 'bump-btn'}
+                                className={mark === 'subir' ? 'bump-btn is-active' : 'bump-btn'}
                                 aria-label={
-                                  marked
+                                  mark === 'subir'
                                     ? `Não subir a carga da série ${setIndex + 1} na próxima vez`
                                     : `Subir a carga da série ${setIndex + 1} na próxima vez`
                                 }
-                                aria-pressed={marked}
-                                onClick={() => {
-                                  setMarks((current) => ({ ...current, [key]: !marked }))
-                                  if (log) void persist(log, !marked)
-                                }}
+                                aria-pressed={mark === 'subir'}
+                                onClick={() => toggleMark('subir')}
                               >
                                 <ArrowUpIcon />
                               </button>
+
+                              <button
+                                type="button"
+                                className={
+                                  mark === 'diminuir'
+                                    ? 'bump-btn bump-btn--down is-active'
+                                    : 'bump-btn bump-btn--down'
+                                }
+                                aria-label={
+                                  mark === 'diminuir'
+                                    ? `Não diminuir a carga da série ${setIndex + 1} na próxima vez`
+                                    : `Diminuir a carga da série ${setIndex + 1} na próxima vez`
+                                }
+                                aria-pressed={mark === 'diminuir'}
+                                onClick={() => toggleMark('diminuir')}
+                              >
+                                <ArrowDownIcon />
+                              </button>
                             </div>
 
-                            {bumpFrom && (
+                            {lastMark === 'subir' && (
                               <div className="set-bump">
-                                {bumped !== undefined
-                                  ? `↑ Você marcou para subir · antes ${formatWeight(bumpFrom.weight)}`
+                                {adjustedWeight !== undefined
+                                  ? `↑ Você marcou para subir · antes ${formatWeight(before?.weight)}`
                                   : '↑ Você marcou para subir a carga desta série'}
                               </div>
                             )}
 
-                            {marked && (
+                            {lastMark === 'diminuir' && (
+                              <div className="set-bump is-down">
+                                {adjustedWeight !== undefined
+                                  ? `↓ Você marcou para diminuir · antes ${formatWeight(before?.weight)}`
+                                  : '↓ Você marcou para diminuir a carga desta série'}
+                              </div>
+                            )}
+
+                            {mark === 'subir' && (
                               <div className="set-bump">
                                 {`↑ Na próxima vez: +${formatWeight(stepOf(row))} nesta série`}
+                              </div>
+                            )}
+
+                            {mark === 'diminuir' && (
+                              <div className="set-bump is-down">
+                                {`↓ Na próxima vez: −${formatWeight(stepOf(row))} nesta série`}
                               </div>
                             )}
 
