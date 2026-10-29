@@ -795,7 +795,7 @@ html.is-scroll-locked body {
 
 .set-row {
   display: grid;
-  grid-template-columns: 20px 1fr 1fr 42px 30px 30px;
+  grid-template-columns: 20px 1fr 1fr 42px 30px 30px 30px;
   align-items: center;
   gap: 6px;
   padding: 6px 0;
@@ -803,7 +803,7 @@ html.is-scroll-locked body {
 }
 
 .set-row--time {
-  grid-template-columns: 20px 0.8fr 1.6fr 42px 30px 30px;
+  grid-template-columns: 20px 0.8fr 1.6fr 42px 30px 30px 30px;
 }
 
 .note-btn,
@@ -832,7 +832,7 @@ html.is-scroll-locked body {
   color: var(--accent);
 }
 
-/* Subir na mão. O peso que já veio subido tem borda tracejada: verde cheio é a
+/* Subir na mão. O peso que já veio ajustado tem borda tracejada: verde cheio é a
    série concluída, e as duas não podem se confundir. */
 .input--bump {
   border-style: dashed;
@@ -846,6 +846,17 @@ html.is-scroll-locked body {
   color: var(--accent);
   font-size: 12px;
   font-weight: 600;
+}
+
+/* Diminuir na mão: o mesmo desenho, no âmbar que o app já usa para reduzir. */
+.bump-btn--down.is-active,
+.set-bump.is-down {
+  color: var(--warn);
+}
+
+.input--bump.is-down {
+  border-color: var(--warn);
+  color: var(--warn);
 }
 
 .set-note {
@@ -892,7 +903,7 @@ html.is-scroll-locked body {
 
 .set-heads {
   display: grid;
-  grid-template-columns: 20px 1fr 1fr 42px 30px 30px;
+  grid-template-columns: 20px 1fr 1fr 42px 30px 30px 30px;
   gap: 6px;
   color: var(--text-faint);
   font-size: 11px;
@@ -903,7 +914,7 @@ html.is-scroll-locked body {
 }
 
 .set-heads--time {
-  grid-template-columns: 20px 0.8fr 1.6fr 42px 30px 30px;
+  grid-template-columns: 20px 0.8fr 1.6fr 42px 30px 30px 30px;
 }
 
 .timer {

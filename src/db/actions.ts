@@ -12,6 +12,7 @@ import {
   type Flag,
   type LadderRatios,
   type MealLogItem,
+  type NextLoad,
   type NutritionSettings,
   type Program,
   type ProgressionSettings,
@@ -1006,7 +1007,7 @@ export async function saveSetLog(data: {
   heartRate?: number
   calories?: number
   note?: string
-  increaseNext?: boolean
+  nextLoad?: NextLoad
 }): Promise<string> {
   const measures = {
     weight: data.weight,
@@ -1019,8 +1020,10 @@ export async function saveSetLog(data: {
     heartRate: data.heartRate,
     calories: data.calories,
     note: data.note?.trim() || undefined,
-    // `undefined` no update apaga o campo: desmarcar não deixa `false` gravado.
-    increaseNext: data.increaseNext ? (true as const) : undefined,
+    // `undefined` no update apaga o campo: desmarcar não deixa `false` gravado,
+    // e trocar de direção apaga a marca anterior.
+    increaseNext: data.nextLoad === 'subir' ? (true as const) : undefined,
+    decreaseNext: data.nextLoad === 'diminuir' ? (true as const) : undefined,
   }
 
   if (data.id) {

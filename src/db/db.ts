@@ -525,7 +525,27 @@ export interface SetLog {
    * por isso `true` e não `Flag`; ausente quando não foi marcada.
    */
   increaseNext?: true
+  /**
+   * O contrário: na próxima vez a série vem com um passo a menos. Exclusiva com
+   * `increaseNext` — ver `nextLoadOf`. São dois campos, e não um só com a
+   * direção, porque `increaseNext` já existia nos aparelhos e nos backups, e
+   * assim nada precisa ser convertido.
+   */
+  decreaseNext?: true
   completedAt: number
+}
+
+/** Para onde a pessoa marcou que a carga da série vai na próxima vez. */
+export type NextLoad = 'subir' | 'diminuir'
+
+/**
+ * A marca da série. Quem grava é o `saveSetLog`, que nunca liga as duas; se um
+ * arquivo estranho trouxer as duas, subir vence.
+ */
+export function nextLoadOf(log: SetLog | undefined): NextLoad | undefined {
+  if (log?.increaseNext) return 'subir'
+  if (log?.decreaseNext) return 'diminuir'
+  return undefined
 }
 
 /** Formato da v1, onde a prescrição morava no próprio item do treino. */
