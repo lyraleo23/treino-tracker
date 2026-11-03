@@ -36,6 +36,11 @@ sem backend e sem cadastro. Todos os dados ficam no próprio aparelho (IndexedDB
   na contagem da sugestão automática, e a automática tem prioridade: enquanto ela
   está na tela, as marcas esperam; aplicada, valem as cargas dela; com *Agora não*,
   as marcas voltam.
+- **↓ automático nos blocos de preparo**: uma série de aquecimento, feeder ou
+  back-off concluída abaixo do mínimo de repetições do bloco ganha o ↓ sozinha, como
+  se a seta tivesse sido tocada — e dá para apagá-lo. Corrigir as repetições para o
+  mínimo ou acima apaga o ↓ do mesmo jeito. Working, cluster e top ficam de fora: a
+  carga deles continua só com a sugestão automática.
 - **Histórico e evolução**: lista de sessões, detalhe agrupado por bloco com as notas
   do treino (sensação geral, pontos fortes, pontos a melhorar) e, por exercício,
   gráfico de peso máximo / volume / repetições ao longo das sessões.

@@ -31,7 +31,7 @@ import {
   getProgressionSuggestion,
   type ProgressionSuggestion,
 } from '../db/queries'
-import { blockRole, buildLadder, type LadderEntry } from '../lib/ladder'
+import { autoDecreaseFloor, blockRole, buildLadder, type LadderEntry } from '../lib/ladder'
 import { effectiveStart, logBounds } from '../lib/session'
 import { useElapsed } from '../hooks/useElapsed'
 import { PageHeader } from '../components/PageHeader'
@@ -475,16 +475,19 @@ export function SessionPage() {
     return count
   }
 
-  /** "1 série para subir e 2 para diminuir. Elas valem se tocar em…" */
+  /**
+   * "Também há 1 série marcada para subir e 2 para diminuir…". Sem "você
+   * marcou": o ↓ dos blocos de preparo pode ter sido aceso sozinho.
+   */
   function describeWaitingMarks({ subir, diminuir }: Record<NextLoad, number>): string {
-    const series = (n: number) => (n === 1 ? '1 série' : `${n} séries`)
+    const series = (n: number) => (n === 1 ? '1 série marcada' : `${n} séries marcadas`)
     const partes = [
       ...(subir > 0 ? [`${series(subir)} para subir`] : []),
       ...(diminuir > 0 ? [`${subir > 0 ? diminuir : series(diminuir)} para diminuir`] : []),
     ]
     const seta = subir > 0 && diminuir > 0 ? '↕' : subir > 0 ? '↑' : '↓'
     const vale = subir + diminuir === 1 ? 'Ela vale' : 'Elas valem'
-    return `${seta} Você também marcou ${partes.join(' e ')}. ${vale} se tocar em "Agora não".`
+    return `${seta} Também há ${partes.join(' e ')}. ${vale} se tocar em "Agora não".`
   }
 
   async function handleFinish() {
@@ -672,6 +675,8 @@ export function SessionPage() {
                   const isTimeRow = block.target.kind === 'time'
                   const isCardioRow = block.target.kind === 'cardio'
                   const cardioFields = exercise.cardioFields ?? DEFAULT_CARDIO_FIELDS
+                  // Piso que acende o ↓ sozinho; só em aquecimento, feeder e back-off.
+                  const floor = autoDecreaseFloor(block)
 
                   const { previous, history, fromOtherWorkout } = historyOf(row, block)
 
@@ -910,13 +915,31 @@ export function SessionPage() {
 
                         carryWeight = weightValue
 
+                        // Aquecimento, feeder e back-off que ficam abaixo do piso
+                        // ganham o ↓ sozinhos, como se a seta tivesse sido
+                        // tocada. Só quando as reps cruzam o piso — ao concluir,
+                        // ou ao corrigi-las depois —, senão regravar a observação
+                        // reacenderia um ↓ que a pessoa apagou. Corrigir para
+                        // cima do piso apaga o ↓ pelo mesmo motivo. E o que foi
+                        // escolhido na mão nesta tela sempre vence.
+                        const withAutoDecrease = (existing: SetLog | undefined) => {
+                          const current = mark ?? null
+                          if (floor === undefined || isTimeRow || touched !== undefined) return current
+                          const reps = parseNumber(repsValue)
+                          const wasBelow = existing?.reps !== undefined && existing.reps < floor
+                          const isBelow = reps !== undefined && reps < floor
+                          if (isBelow && !wasBelow && current === null) return 'diminuir'
+                          if (!isBelow && wasBelow && current === 'diminuir') return null
+                          return current
+                        }
+
                         // Todo salvamento leva a marca: sair do campo de peso
                         // regrava a série e, sem ela, apagaria o ↑ ou o ↓.
                         // `null` tira a marca: com `undefined` o padrão do
                         // parâmetro entraria e regravaria a marca de agora.
                         const persist = (
                           existing: SetLog | undefined,
-                          nextLoad: NextLoad | null = mark ?? null,
+                          nextLoad: NextLoad | null = withAutoDecrease(existing),
                         ) =>
                           saveSetLog({
                             id: existing?.id,
@@ -1070,9 +1093,19 @@ export function SessionPage() {
 
                             {lastMark === 'diminuir' && (
                               <div className="set-bump is-down">
-                                {adjustedWeight !== undefined
-                                  ? `↓ Você marcou para diminuir · antes ${formatWeight(before?.weight)}`
-                                  : '↓ Você marcou para diminuir a carga desta série'}
+                                {`↓ ${
+                                  // Abaixo do piso, o ↓ pode ter sido aceso
+                                  // sozinho: dizer o motivo, não "você marcou".
+                                  floor !== undefined &&
+                                  before?.reps !== undefined &&
+                                  before.reps < floor
+                                    ? `Abaixo do mínimo da última vez (${before.reps} reps)`
+                                    : 'Você marcou para diminuir'
+                                }${
+                                  adjustedWeight !== undefined
+                                    ? ` · antes ${formatWeight(before?.weight)}`
+                                    : ''
+                                }`}
                               </div>
                             )}
 
@@ -1084,7 +1117,11 @@ export function SessionPage() {
 
                             {mark === 'diminuir' && (
                               <div className="set-bump is-down">
-                                {`↓ Na próxima vez: −${formatWeight(stepOf(row))} nesta série`}
+                                {floor !== undefined &&
+                                log?.reps !== undefined &&
+                                log.reps < floor
+                                  ? `↓ Abaixo do mínimo (${log.reps} de ${floor}) · próxima vez −${formatWeight(stepOf(row))}`
+                                  : `↓ Na próxima vez: −${formatWeight(stepOf(row))} nesta série`}
                               </div>
                             )}
 
