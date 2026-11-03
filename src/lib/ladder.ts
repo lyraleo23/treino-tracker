@@ -27,6 +27,22 @@ export function isAnchorBlock(kind: BlockKind): boolean {
 }
 
 /**
+ * O piso de repetições que, não alcançado, marca a série para diminuir a carga
+ * na próxima vez — o mesmo ↓ que a pessoa tocaria. Vale só para aquecimento,
+ * feeder e back-off: a carga dos blocos-âncora é assunto da sugestão
+ * automática, e drop e amrap vão até onde der por definição. Sem faixa de
+ * repetições (alvo de tempo) não há piso, e o bloco fica de fora.
+ */
+export function autoDecreaseFloor(block: SetBlock): number | undefined {
+  if (block.kind !== 'warmup' && block.kind !== 'feeder' && block.kind !== 'backoff') {
+    return undefined
+  }
+  if (block.target.kind === 'reps') return block.target.value
+  if (block.target.kind === 'repsRange') return block.target.min
+  return undefined
+}
+
+/**
  * Identidade do bloco dentro do exercício, independente de treino: o tipo mais a
  * posição entre os do mesmo tipo. É o que permite o Working Set do Lower Body 2
  * herdar a carga do Working Set do Lower Body 1 — o `blockId` não serve, porque
