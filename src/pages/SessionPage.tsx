@@ -31,7 +31,13 @@ import {
   getProgressionSuggestion,
   type ProgressionSuggestion,
 } from '../db/queries'
-import { autoDecreaseFloor, blockRole, buildLadder, type LadderEntry } from '../lib/ladder'
+import {
+  autoDecreaseFloor,
+  blockRole,
+  buildLadder,
+  repsAfterIncrease,
+  type LadderEntry,
+} from '../lib/ladder'
 import { effectiveStart, logBounds } from '../lib/session'
 import { useElapsed } from '../hooks/useElapsed'
 import { PageHeader } from '../components/PageHeader'
@@ -457,15 +463,27 @@ export function SessionPage() {
     return buildLadder(row.blocks, suggestion.previous, anchor, step, ratios)
   }
 
-  /** Escreve a escada nos campos da sessão. Nada vai para o banco aqui. */
-  function applyLadder(row: Row, entries: LadderEntry[]) {
+  /**
+   * Escreve a escada nos campos da sessão. Nada vai para o banco aqui. Num
+   * aumento, as repetições voltam ao mínimo da faixa onde a carga subiu — mas
+   * não nas séries já concluídas, que guardam o que foi feito de verdade.
+   */
+  function applyLadder(row: Row, entries: LadderEntry[], increase: boolean) {
     setDrafts((current) => {
       const next = { ...current }
       for (const entry of entries) {
         const value = toInput(entry.to)
+        const reps = increase ? repsAfterIncrease(entry) : undefined
         for (let index = 0; index < setCountOf(entry.block); index += 1) {
           const key = rowKey(entry.block.id, index)
-          next[key] = { ...next[key], weight: value }
+          const done = logs.some(
+            (log) => log.blockId === entry.block.id && log.setIndex === index,
+          )
+          next[key] = {
+            ...next[key],
+            weight: value,
+            ...(reps !== undefined && !done ? { reps: toInput(reps) } : {}),
+          }
         }
       }
       return next
@@ -677,7 +695,7 @@ export function SessionPage() {
                       step={stepOf(row)}
                       preview={(delta) => proposalFor(row, suggestion, delta)}
                       blocks={blocks}
-                      onApply={(entries) => applyLadder(row, entries)}
+                      onApply={(entries) => applyLadder(row, entries, suggestion.kind === 'subir')}
                       onDismiss={() =>
                         setOutcomes((current) => ({
                           ...current,

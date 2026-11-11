@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import type { SetBlock } from '../db/db'
 import type { ProgressionSuggestion } from '../db/queries'
-import type { LadderEntry } from '../lib/ladder'
+import { repsAfterIncrease, type LadderEntry } from '../lib/ladder'
 import { formatBlockLabel, formatNumber } from '../lib/format'
 
 /** Os saltos de carga oferecidos, em kg. */
@@ -67,10 +67,22 @@ export function SuggestionBanner({
                 {entry.from === undefined ? '—' : `${formatNumber(entry.from)}`}
               </span>
               <span className="proposal__arrow">→</span>
-              <span className="proposal__to">{formatNumber(entry.to)} kg</span>
+              <span className="proposal__to">
+                {formatNumber(entry.to)} kg
+                {/* Num aumento, a prévia já diz que as reps recomeçam. */}
+                {suggestion.kind === 'subir' &&
+                  repsAfterIncrease(entry) !== undefined &&
+                  ` × ${repsAfterIncrease(entry)}`}
+              </span>
             </li>
           ))}
         </ul>
+      )}
+
+      {suggestion.kind === 'subir' && entries.some((entry) => repsAfterIncrease(entry) !== undefined) && (
+        <p className="hint" style={{ margin: 0 }}>
+          Com a carga nova, as repetições recomeçam do mínimo da faixa.
+        </p>
       )}
 
       {/* Escolher o tamanho do passo e aplicar são gestos diferentes: os chips

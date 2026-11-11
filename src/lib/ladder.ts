@@ -118,6 +118,20 @@ export function buildLadder(
   })
 }
 
+/**
+ * Dupla progressão: o bloco cuja carga a sugestão automática sobe recomeça a
+ * faixa pelo mínimo de repetições — 3×8–10 fechado em 10 com 40 kg volta como
+ * 8 com 42,5 kg. Só onde a carga de fato sobe; bloco de tempo fica de fora. A
+ * seta ↑ marcada na mão não passa por aqui e mantém as repetições de antes.
+ */
+export function repsAfterIncrease(entry: LadderEntry): number | undefined {
+  if (entry.from !== undefined && entry.to <= entry.from) return undefined
+  const { target } = entry.block
+  if (target.kind === 'repsRange') return target.min
+  if (target.kind === 'reps') return target.value
+  return undefined
+}
+
 /** A carga de referência do exercício: a mais pesada entre os working/top. */
 export function anchorWeight(
   blocks: SetBlock[],

@@ -24,7 +24,10 @@ sem backend e sem cadastro. Todos os dados ficam no próprio aparelho (IndexedDB
 - **Sugestão de progressão**: quando todas as séries dos blocos de *working* fecham o
   topo da faixa, a sessão seguinte oferece subir **1 kg, 2,5 kg ou 5 kg**. O aumento
   vale para o exercício inteiro — feeders e aquecimento sobem junto, cada bloco a
-  partir do próprio peso anterior, mantendo a proporção entre eles.
+  partir do próprio peso anterior, mantendo a proporção entre eles. Onde a carga
+  sobe, as repetições recomeçam do **mínimo da faixa** (dupla progressão): fechou
+  3×8–10 em 10 com 40 kg, volta 42,5 kg × 8. As setas ↑ marcadas na mão não mexem
+  nas repetições.
 - **Quantas sessões antes de subir**: em *Ajustes → Aumento de carga* dá para exigir
   de 1 a 5 sessões **seguidas** no topo da faixa antes de a sugestão aparecer. Com 2,
   é preciso repetir o desempenho **na mesma carga** em duas sessões; mudar a carga
