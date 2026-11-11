@@ -19,7 +19,8 @@ sem backend e sem cadastro. Todos os dados ficam no próprio aparelho (IndexedDB
   pelos treinos. Por isso **o peso usado é lembrado em qualquer treino ou sessão** —
   registrou 40 kg no supino do Treino A, ele aparece pré-preenchido no Treino B.
 - **Sessões**: registra peso, repetições/tempo e observação em cada série, com
-  cronômetro regressivo nos blocos de tempo.
+  cronômetro regressivo nos blocos de tempo. **Série extra** acrescenta uma linha
+  além do planejado, e **Remover série** tira a última delas — registrada ou não.
 - **Sugestão de progressão**: quando todas as séries dos blocos de *working* fecham o
   topo da faixa, a sessão seguinte oferece subir **1 kg, 2,5 kg ou 5 kg**. O aumento
   vale para o exercício inteiro — feeders e aquecimento sobem junto, cada bloco a

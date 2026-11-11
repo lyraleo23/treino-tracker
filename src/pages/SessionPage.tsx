@@ -50,6 +50,7 @@ import {
   NoteIcon,
   PlusIcon,
   SkipIcon,
+  TrashIcon,
   VideoIcon,
 } from '../components/icons'
 import { openExternal } from '../lib/image'
@@ -263,14 +264,15 @@ export function SessionPage() {
   )
 
   /**
-   * Quantas séries o bloco mostra: o planejado, mais o que já foi registrado
-   * além disso, mais as séries extras pedidas na mão.
+   * Quantas séries o bloco mostra: o planejado mais as extras pedidas na mão,
+   * ou até a última série registrada, o que for maior. É o maior dos dois, e
+   * não a soma: somados, concluir a série extra abria mais uma linha vazia.
    */
   const setCountOf = useCallback(
     (block: SetBlock) => {
       const blockLogs = (data?.logs ?? []).filter((log) => log.blockId === block.id)
       const maxIndex = blockLogs.reduce((max, log) => Math.max(max, log.setIndex), -1)
-      return Math.max(block.sets, maxIndex + 1) + (extraSets[block.id] ?? 0)
+      return Math.max(block.sets + (extraSets[block.id] ?? 0), maxIndex + 1)
     },
     [data, extraSets],
   )
@@ -361,6 +363,40 @@ export function SessionPage() {
   const totalDone = rows
     .filter((row) => !isRowSkipped(row))
     .reduce((sum, row) => sum + logsOf(row).length, 0)
+
+  /**
+   * As extras contam a partir do que está na tela, não do planejado: depois de
+   * reabrir a sessão, uma extra já registrada aparece sem estar em `extraSets`.
+   */
+  function addExtraSet(block: SetBlock) {
+    const extra = setCountOf(block) + 1 - block.sets
+    setExtraSets((current) => ({ ...current, [block.id]: extra }))
+  }
+
+  /**
+   * Só a última linha sai, e só se estiver além do planejado: as séries são
+   * guardadas pela posição, e tirar uma do meio renumeraria as seguintes.
+   */
+  function removeLastSet(block: SetBlock) {
+    const count = setCountOf(block)
+    if (count <= block.sets) return
+
+    const index = count - 1
+    const log = logs.find((entry) => entry.blockId === block.id && entry.setIndex === index)
+    if (log) void deleteSetLog(log.id)
+
+    // A linha volta vazia se for pedida de novo, sem o que se digitou nela.
+    const key = rowKey(block.id, index)
+    const without = <T,>(record: Record<string, T>) => {
+      const next = { ...record }
+      delete next[key]
+      return next
+    }
+    setDrafts(without)
+    setOpenNotes(without)
+    setMarks(without)
+    setExtraSets((current) => ({ ...current, [block.id]: index - block.sets }))
+  }
 
   /** Pular é decisão de percurso, não exclusão: o que já foi feito continua. */
   function toggleSkip(row: Row) {
@@ -1141,19 +1177,26 @@ export function SessionPage() {
                         )
                       })}
 
-                      <button
-                        type="button"
-                        className="btn btn--sm btn--ghost"
-                        style={{ marginTop: 8 }}
-                        onClick={() =>
-                          setExtraSets((current) => ({
-                            ...current,
-                            [block.id]: (current[block.id] ?? 0) + 1,
-                          }))
-                        }
-                      >
-                        <PlusIcon width={16} height={16} /> Série extra
-                      </button>
+                      <div className="row" style={{ marginTop: 8, gap: 8, flexWrap: 'wrap' }}>
+                        <button
+                          type="button"
+                          className="btn btn--sm btn--ghost"
+                          onClick={() => addExtraSet(block)}
+                        >
+                          <PlusIcon width={16} height={16} /> Série extra
+                        </button>
+                        {setCountOf(block) > block.sets && (
+                          <button
+                            type="button"
+                            className="btn btn--sm btn--ghost"
+                            aria-label={`Remover a série ${setCountOf(block)}`}
+                            onClick={() => removeLastSet(block)}
+                          >
+                            <TrashIcon width={16} height={16} /> Remover série{' '}
+                            {setCountOf(block)}
+                          </button>
+                        )}
+                      </div>
                         </>
                       )}
                     </div>
