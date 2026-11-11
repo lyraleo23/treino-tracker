@@ -19,11 +19,15 @@ sem backend e sem cadastro. Todos os dados ficam no próprio aparelho (IndexedDB
   pelos treinos. Por isso **o peso usado é lembrado em qualquer treino ou sessão** —
   registrou 40 kg no supino do Treino A, ele aparece pré-preenchido no Treino B.
 - **Sessões**: registra peso, repetições/tempo e observação em cada série, com
-  cronômetro regressivo nos blocos de tempo.
+  cronômetro regressivo nos blocos de tempo. **Série extra** acrescenta uma linha
+  além do planejado, e **Remover série** tira a última delas — registrada ou não.
 - **Sugestão de progressão**: quando todas as séries dos blocos de *working* fecham o
   topo da faixa, a sessão seguinte oferece subir **1 kg, 2,5 kg ou 5 kg**. O aumento
   vale para o exercício inteiro — feeders e aquecimento sobem junto, cada bloco a
-  partir do próprio peso anterior, mantendo a proporção entre eles.
+  partir do próprio peso anterior, mantendo a proporção entre eles. Onde a carga
+  sobe, as repetições recomeçam do **mínimo da faixa** (dupla progressão): fechou
+  3×8–10 em 10 com 40 kg, volta 42,5 kg × 8. As setas ↑ marcadas na mão não mexem
+  nas repetições.
 - **Quantas sessões antes de subir**: em *Ajustes → Aumento de carga* dá para exigir
   de 1 a 5 sessões **seguidas** no topo da faixa antes de a sugestão aparecer. Com 2,
   é preciso repetir o desempenho **na mesma carga** em duas sessões; mudar a carga
@@ -84,6 +88,10 @@ node scripts/generate-icons.mjs
    Em conta gratuita isso só funciona com o repositório **público**.
 3. Cada `push` na branch `main` publica o app em
    `https://<seu-usuario>.github.io/treino-tracker/`.
+
+Quando sai versão nova, o app instalado mostra a barra **Nova versão disponível →
+Atualizar**. Ele procura de hora em hora e sempre que volta para a frente; não há
+número de versão para subir à mão, o build já muda o service worker a cada deploy.
 
 ## Instalando no iPhone
 

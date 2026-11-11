@@ -1,6 +1,7 @@
 import { Suspense, lazy } from 'react'
 import { HashRouter, Navigate, Route, Routes } from 'react-router-dom'
 import { AppShell } from './components/AppShell'
+import { UpdateBar } from './components/UpdateBar'
 import { WorkoutsPage } from './pages/WorkoutsPage'
 import { ProgramsPage } from './pages/ProgramsPage'
 import { HealthPage } from './pages/HealthPage'
@@ -55,6 +56,7 @@ export function App() {
         <Route path="/sessao/:sessionId" element={<SessionPage />} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
+      <UpdateBar />
     </HashRouter>
   )
 }
