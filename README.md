@@ -86,6 +86,10 @@ node scripts/generate-icons.mjs
 3. Cada `push` na branch `main` publica o app em
    `https://<seu-usuario>.github.io/treino-tracker/`.
 
+Quando sai versão nova, o app instalado mostra a barra **Nova versão disponível →
+Atualizar**. Ele procura de hora em hora e sempre que volta para a frente; não há
+número de versão para subir à mão, o build já muda o service worker a cada deploy.
+
 ## Instalando no iPhone
 
 1. Abra a URL do Pages no **Safari** (precisa ser o Safari — o Chrome no iOS não
