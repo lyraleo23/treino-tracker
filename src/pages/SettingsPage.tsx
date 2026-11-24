@@ -7,7 +7,9 @@ import { getLadderRatios, getProgressionSettings } from '../db/queries'
 import { seedIfEmpty } from '../db/seed'
 import { PageHeader } from '../components/PageHeader'
 import { ConfirmDialog } from '../components/Modal'
+import { CheckIcon } from '../components/icons'
 import { parseNumber } from '../lib/format'
+import { THEMES, setTheme, useTheme } from '../lib/theme'
 
 /**
  * Os percentuais da escada, na ordem em que se lê a progressão. A unidade vai
@@ -43,6 +45,7 @@ function mapLadder<T>(fn: (key: LadderKey) => T): Record<LadderKey, T> {
 
 export function SettingsPage() {
   const fileInput = useRef<HTMLInputElement>(null)
+  const theme = useTheme()
   const [message, setMessage] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [confirmWipe, setConfirmWipe] = useState(false)
@@ -149,9 +152,43 @@ export function SettingsPage() {
 
   return (
     <>
-      <PageHeader title="Ajustes" subtitle="Backup e dados do app" />
+      <PageHeader title="Ajustes" subtitle="Aparência, backup e dados do app" />
 
       <div className="page">
+        <h2 className="section-title">Aparência</h2>
+        {/* Troca no toque, como o seletor de sessões: a tela inteira mudando
+            de cor já é a confirmação. Cada opção leva o próprio data-theme,
+            então a prévia mostra o tema como ele é, não o tema ativo. */}
+        <div className="theme-grid">
+          {THEMES.map((option) => {
+            const active = option.id === theme
+            return (
+              <button
+                key={option.id}
+                type="button"
+                data-theme={option.id}
+                className={active ? 'theme-option is-active' : 'theme-option'}
+                aria-pressed={active}
+                onClick={() => setTheme(option.id)}
+              >
+                <span className="theme-option__preview" aria-hidden="true">
+                  <span className="theme-option__title" />
+                  <span className="theme-option__card">
+                    <span className="theme-option__line" />
+                    <span className="theme-option__check" />
+                  </span>
+                  <span className="theme-option__button" />
+                </span>
+                <span className="theme-option__name">
+                  {option.name}
+                  {active && <CheckIcon />}
+                </span>
+                <span className="theme-option__desc">{option.description}</span>
+              </button>
+            )
+          })}
+        </div>
+
         <h2 className="section-title">Dados guardados</h2>
         <div className="stats">
           <div className="stat">

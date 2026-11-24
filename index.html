@@ -18,6 +18,15 @@
 
     <link rel="icon" type="image/svg+xml" href="favicon.svg" />
     <title>Treino Tracker</title>
+
+    <!-- Aplica o tema salvo antes da primeira pintura; sem isso a tela piscaria
+         no tema padrão a cada abertura. O resto vive em src/lib/theme.ts. -->
+    <script>
+      try {
+        var theme = localStorage.getItem('treino-tracker:theme')
+        if (theme) document.documentElement.dataset.theme = theme
+      } catch (e) {}
+    </script>
   </head>
   <body>
     <div id="root"></div>

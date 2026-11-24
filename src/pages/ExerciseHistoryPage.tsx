@@ -22,6 +22,7 @@ import { ExerciseFormModal } from '../components/ExerciseFormModal'
 import { ExercisePhoto } from '../components/ExercisePhoto'
 import { VideoIcon } from '../components/icons'
 import { openExternal } from '../lib/image'
+import { readThemeTokens, useTheme } from '../lib/theme'
 import {
   KIND_LABELS,
   formatDate,
@@ -30,13 +31,9 @@ import {
   formatSeconds,
 } from '../lib/format'
 
-// Cores literais: presentation attributes de SVG não resolvem var() no Chrome,
-// então os tokens do CSS são espelhados aqui.
-const CHART = {
-  line: '#34d399',
-  grid: '#2a303b',
-  axis: '#6b7688',
-}
+// Presentation attributes de SVG não resolvem var() no Chrome, então as cores
+// do gráfico são lidas dos tokens do tema ativo e passadas já resolvidas.
+const CHART_TOKENS = ['accent', 'border', 'text-faint', 'surface'] as const
 
 type Metric = {
   key: string
@@ -148,6 +145,18 @@ export function ExerciseHistoryPage() {
   const [confirmArchive, setConfirmArchive] = useState(false)
   const [merging, setMerging] = useState(false)
   const [mergeTarget, setMergeTarget] = useState<Exercise | null>(null)
+
+  const theme = useTheme()
+  const chartColors = useMemo(() => {
+    const tokens = readThemeTokens(CHART_TOKENS)
+    return {
+      line: tokens.accent,
+      grid: tokens.border,
+      axis: tokens['text-faint'],
+      dotRing: tokens.surface,
+    }
+    // O tema não entra no cálculo, mas é o que muda os tokens: relê ao trocar.
+  }, [theme])
 
   const exercise = useLiveQuery(
     async () => (exerciseId ? ((await db.exercises.get(exerciseId)) ?? null) : null),
@@ -324,22 +333,22 @@ export function ExerciseHistoryPage() {
               ) : (
                 <ResponsiveContainer width="100%" height={220}>
                   <LineChart data={chartData} margin={{ top: 6, right: 14, bottom: 0, left: 0 }}>
-                    <CartesianGrid stroke={CHART.grid} vertical={false} />
+                    <CartesianGrid stroke={chartColors.grid} vertical={false} />
                     <XAxis
                       dataKey="label"
-                      tick={{ fill: CHART.axis, fontSize: 11 }}
+                      tick={{ fill: chartColors.axis, fontSize: 11 }}
                       tickLine={false}
-                      axisLine={{ stroke: CHART.grid }}
+                      axisLine={{ stroke: chartColors.grid }}
                       minTickGap={18}
                     />
                     <YAxis
                       width={44}
-                      tick={{ fill: CHART.axis, fontSize: 11 }}
+                      tick={{ fill: chartColors.axis, fontSize: 11 }}
                       tickLine={false}
                       axisLine={false}
                     />
                     <Tooltip
-                      cursor={{ stroke: CHART.axis, strokeDasharray: '3 3' }}
+                      cursor={{ stroke: chartColors.axis, strokeDasharray: '3 3' }}
                       content={
                         <ChartTooltip format={metric.format} metricLabel={metric.label} />
                       }
@@ -347,13 +356,18 @@ export function ExerciseHistoryPage() {
                     <Line
                       type="monotone"
                       dataKey="value"
-                      stroke={CHART.line}
+                      stroke={chartColors.line}
                       strokeWidth={2}
                       // Sem animação de entrada: com a aba em segundo plano o
                       // rAF não roda e a linha ficaria invisível pela metade.
                       isAnimationActive={false}
-                      dot={{ r: 4, fill: CHART.line, strokeWidth: 0 }}
-                      activeDot={{ r: 6, fill: CHART.line, stroke: '#161a21', strokeWidth: 2 }}
+                      dot={{ r: 4, fill: chartColors.line, strokeWidth: 0 }}
+                      activeDot={{
+                        r: 6,
+                        fill: chartColors.line,
+                        stroke: chartColors.dotRing,
+                        strokeWidth: 2,
+                      }}
                     />
                   </LineChart>
                 </ResponsiveContainer>
