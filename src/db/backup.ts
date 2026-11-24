@@ -1,6 +1,7 @@
 import {
   db,
   defaultProgramName,
+  type CharacterPhoto,
   type Container,
   type Cycle,
   type DietMeal,
@@ -27,10 +28,11 @@ import { newId } from '../lib/id'
 import { blobToDataUrl, dataUrlToBlob } from '../lib/image'
 
 const FORMAT = 'treino-tracker-backup'
-const VERSION = 7
+const VERSION = 8
 
 /** No arquivo a foto vira data URL: Blob não sobrevive a JSON. */
 type ExerciseDoc = Omit<Exercise, 'photo'> & { photo?: string }
+type CharacterPhotoDoc = Omit<CharacterPhoto, 'photo'> & { photo: string }
 
 export interface Backup {
   format: typeof FORMAT
@@ -52,6 +54,11 @@ export interface Backup {
   mealLogs?: MealLog[]
   mealLogItems?: MealLogItem[]
   nutritionDays?: NutritionDay[]
+  /**
+   * Ausente antes da v8. Só vem quando o backup inclui fotos — sem a imagem a
+   * linha não tem o que guardar.
+   */
+  characterPhotos?: CharacterPhotoDoc[]
   programs: Program[]
   workouts: Workout[]
   workoutItems: WorkoutItem[]
@@ -81,6 +88,7 @@ export async function exportBackup(includePhotos = true): Promise<Backup> {
     setBlocks,
     sessions,
     setLogs,
+    rawCharacterPhotos,
   ] = await Promise.all([
       db.exercises.toArray(),
       db.settings.toArray(),
@@ -101,6 +109,7 @@ export async function exportBackup(includePhotos = true): Promise<Backup> {
       db.setBlocks.toArray(),
       db.sessions.toArray(),
       db.setLogs.toArray(),
+      db.characterPhotos.toArray(),
     ])
 
   const exercises: ExerciseDoc[] = await Promise.all(
@@ -110,11 +119,21 @@ export async function exportBackup(includePhotos = true): Promise<Backup> {
     })),
   )
 
+  const characterPhotos: CharacterPhotoDoc[] = includePhotos
+    ? await Promise.all(
+        rawCharacterPhotos.map(async ({ photo, ...rest }) => ({
+          ...rest,
+          photo: await blobToDataUrl(photo),
+        })),
+      )
+    : []
+
   return {
     format: FORMAT,
     version: VERSION,
     exportedAt: new Date().toISOString(),
     exercises,
+    characterPhotos,
     settings,
     drinks,
     containers,
@@ -279,6 +298,13 @@ async function toExercises(docs: ExerciseDoc[]): Promise<Exercise[]> {
   )
 }
 
+/** Idem para as fotos dos personagens. */
+async function toCharacterPhotos(docs: CharacterPhotoDoc[] = []): Promise<CharacterPhoto[]> {
+  return Promise.all(
+    docs.map(async ({ photo, ...rest }) => ({ ...rest, photo: await dataUrlToBlob(photo) })),
+  )
+}
+
 function parseBackup(raw: string): Backup {
   const parsed: unknown = JSON.parse(raw)
   if (!isBackup(parsed)) {
@@ -298,10 +324,12 @@ function parseBackup(raw: string): Backup {
 export async function mergeBackup(raw: string): Promise<void> {
   const backup = parseBackup(raw)
   const exercisesFromFile = await toExercises(backup.exercises)
+  const characterPhotos = await toCharacterPhotos(backup.characterPhotos)
 
   await db.transaction(
     'rw',
     [
+      db.characterPhotos,
       db.exercises,
       db.settings,
       db.drinks,
@@ -347,6 +375,7 @@ export async function mergeBackup(raw: string): Promise<void> {
             notes: mesmoNome.notes ?? vindo.notes,
             videoUrl: mesmoNome.videoUrl ?? vindo.videoUrl,
             photo: mesmoNome.photo ?? vindo.photo,
+            prova: mesmoNome.prova ?? vindo.prova,
           })
           mapaExercicios.set(vindo.id, mesmoNome.id)
           continue
@@ -373,6 +402,7 @@ export async function mergeBackup(raw: string): Promise<void> {
       await db.mealLogs.bulkPut(backup.mealLogs ?? [])
       await db.mealLogItems.bulkPut(backup.mealLogItems ?? [])
       await db.nutritionDays.bulkPut(backup.nutritionDays ?? [])
+      await db.characterPhotos.bulkPut(characterPhotos)
       await db.programs.bulkPut(backup.programs)
       await db.workouts.bulkPut(backup.workouts)
 
@@ -430,10 +460,12 @@ export async function mergeBackup(raw: string): Promise<void> {
 export async function importBackup(raw: string): Promise<void> {
   const backup = parseBackup(raw)
   const exercises = await toExercises(backup.exercises)
+  const characterPhotos = await toCharacterPhotos(backup.characterPhotos)
 
   await db.transaction(
     'rw',
     [
+      db.characterPhotos,
       db.exercises,
       db.settings,
       db.drinks,
@@ -456,6 +488,7 @@ export async function importBackup(raw: string): Promise<void> {
     ],
     async () => {
       await Promise.all([
+        db.characterPhotos.clear(),
         db.exercises.clear(),
         db.settings.clear(),
         db.drinks.clear(),
@@ -477,6 +510,7 @@ export async function importBackup(raw: string): Promise<void> {
         db.setLogs.clear(),
       ])
       await Promise.all([
+        db.characterPhotos.bulkAdd(characterPhotos),
         db.exercises.bulkAdd(exercises),
         db.settings.bulkAdd(backup.settings ?? []),
         db.drinks.bulkAdd(backup.drinks ?? []),
@@ -507,6 +541,7 @@ export async function wipeAll(): Promise<void> {
   await db.transaction(
     'rw',
     [
+      db.characterPhotos,
       db.exercises,
       db.settings,
       db.drinks,
@@ -529,6 +564,7 @@ export async function wipeAll(): Promise<void> {
     ],
     async () => {
       await Promise.all([
+        db.characterPhotos.clear(),
         db.exercises.clear(),
         db.settings.clear(),
         db.drinks.clear(),

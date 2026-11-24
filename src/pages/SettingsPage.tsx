@@ -99,10 +99,14 @@ export function SettingsPage() {
 
   const counts = useLiveQuery(async () => {
     const exercises = await db.exercises.toArray()
-    const photoBytes = exercises.reduce((sum, e) => sum + (e.photo?.size ?? 0), 0)
+    // As fotos dos personagens da Arena vão no backup junto com as dos exercícios.
+    const characterPhotos = await db.characterPhotos.toArray()
+    const photoBytes =
+      exercises.reduce((sum, e) => sum + (e.photo?.size ?? 0), 0) +
+      characterPhotos.reduce((sum, c) => sum + c.photo.size, 0)
     return {
       exercises: exercises.length,
-      photos: exercises.filter((e) => e.photo).length,
+      photos: exercises.filter((e) => e.photo).length + characterPhotos.length,
       photoBytes,
       workouts: await db.workouts.count(),
       sessions: await db.sessions.count(),

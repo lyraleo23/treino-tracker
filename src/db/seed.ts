@@ -7,6 +7,7 @@ import {
 } from './db'
 import { newId } from '../lib/id'
 import { ensureDietCatalog } from './dietSeed'
+import { PROVA_BY_SEED_NAME } from './characters'
 
 type SeedExercise = [name: string, kind: ExerciseKind, muscleGroup: string]
 
@@ -168,6 +169,7 @@ export async function seedIfEmpty(): Promise<void> {
     muscleGroup,
     cardioFields: kind === 'cardio' ? CARDIO_FIELDS_BY_NAME[name] : undefined,
     weightStep: kind === 'cardio' ? undefined : WEIGHT_STEP_BY_NAME[name],
+    prova: PROVA_BY_SEED_NAME[name],
     archived: 0,
     createdAt: now + i,
   }))

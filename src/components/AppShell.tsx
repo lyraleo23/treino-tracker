@@ -1,13 +1,22 @@
 import { NavLink, Outlet } from 'react-router-dom'
-import { DropIcon, DumbbellIcon, HistoryIcon, ListIcon, SettingsIcon } from './icons'
+import {
+  DropIcon,
+  DumbbellIcon,
+  HistoryIcon,
+  ListIcon,
+  SettingsIcon,
+  TrophyIcon,
+} from './icons'
 
-// Cinco abas cabem a 375px (~75px cada). Uma sexta apertaria para ~62px, que é
-// onde os rótulos começam a quebrar — por isso Nutrição divide a aba "Saúde"
-// com Hidratação em vez de virar item próprio.
+// Seis abas: a 375px cada uma fica com ~62px, e "Exercícios" é o rótulo mais
+// largo que ainda cabe — o CSS da .tab encolhe a letra em telas mais estreitas.
+// Uma sétima não cabe: Nutrição divide a aba "Saúde" com Hidratação em vez de
+// virar item próprio.
 const TABS = [
   { to: '/', label: 'Treinos', Icon: DumbbellIcon },
   { to: '/historico', label: 'Histórico', Icon: HistoryIcon },
   { to: '/exercicios', label: 'Exercícios', Icon: ListIcon },
+  { to: '/arena', label: 'Arena', Icon: TrophyIcon },
   { to: '/saude', label: 'Saúde', Icon: DropIcon },
   { to: '/ajustes', label: 'Ajustes', Icon: SettingsIcon },
 ]

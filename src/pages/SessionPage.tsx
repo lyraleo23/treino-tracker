@@ -48,6 +48,7 @@ import { CardioSetRow, type CardioDraft } from '../components/CardioSetRow'
 import { ExercisePhoto } from '../components/ExercisePhoto'
 import { SetBlockModal } from '../components/SetBlockModal'
 import { SuggestionBanner } from '../components/SuggestionBanner'
+import { RivalLine } from '../components/RivalLine'
 import {
   ArrowDownIcon,
   ArrowUpIcon,
@@ -671,6 +672,10 @@ export function SessionPage() {
                     </button>
                   </div>
                 </div>
+
+                {!rowSkipped && expanded && (
+                  <RivalLine exercise={exercise} sessionId={session.id} blocks={blocks} />
+                )}
 
                 {rowSkipped && (
                   <p className="hint" style={{ margin: '4px 0 0 22px' }}>

@@ -20,6 +20,7 @@ import { EmptyState } from '../components/EmptyState'
 import { ConfirmDialog } from '../components/Modal'
 import { ExerciseFormModal } from '../components/ExerciseFormModal'
 import { ExercisePhoto } from '../components/ExercisePhoto'
+import { DuelLadder } from '../components/DuelLadder'
 import { VideoIcon } from '../components/icons'
 import { openExternal } from '../lib/image'
 import { readThemeTokens, useTheme } from '../lib/theme'
@@ -420,6 +421,8 @@ export function ExerciseHistoryPage() {
             </div>
           </>
         )}
+
+        <DuelLadder exercise={exercise} />
 
         <div className="stack" style={{ marginTop: 22 }}>
           <button

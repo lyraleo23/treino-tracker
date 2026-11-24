@@ -151,3 +151,11 @@ export const CloseIcon = (props: IconProps) => (
     <path d="M6 6l12 12M18 6 6 18" />
   </Icon>
 )
+
+export const TrophyIcon = (props: IconProps) => (
+  <Icon {...props}>
+    <path d="M8 4h8v5a4 4 0 0 1-8 0V4Z" />
+    <path d="M8 6H5v1.5A3 3 0 0 0 8 10.5M16 6h3v1.5a3 3 0 0 1-3 3" />
+    <path d="M12 13v4M8.5 20h7M10 17h4v3h-4z" />
+  </Icon>
+)
