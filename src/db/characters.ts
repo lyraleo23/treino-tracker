@@ -6,6 +6,8 @@
  * do aparelho (tabela `characterPhotos`), porque é escolhida no celular.
  */
 
+import { GTA6_CHARACTERS } from './catalog/gta6'
+
 /** Unidade em que a prova é medida — carga ou tempo segurado. */
 export type ProvaUnit = 'kg' | 's'
 
@@ -23,6 +25,14 @@ export const PROVAS = [
   { id: 'terra', name: 'Levantamento terra', unit: 'kg', inPhrase: 'no levantamento terra' },
   { id: 'leg-press', name: 'Leg press', unit: 'kg', inPhrase: 'no leg press' },
   { id: 'desenvolvimento', name: 'Desenvolvimento', unit: 'kg', inPhrase: 'no desenvolvimento' },
+  // Carga de UM halter, como se anota no app: comparar o par com a barra de
+  // alguém seria injusto para os dois lados.
+  {
+    id: 'desenvolvimento-halteres',
+    name: 'Desenvolvimento com halteres (por mão)',
+    unit: 'kg',
+    inPhrase: 'no desenvolvimento com halteres',
+  },
   { id: 'puxada', name: 'Puxada', unit: 'kg', inPhrase: 'na puxada' },
   { id: 'remada', name: 'Remada', unit: 'kg', inPhrase: 'na remada' },
   { id: 'rosca', name: 'Rosca', unit: 'kg', inPhrase: 'na rosca' },
@@ -30,6 +40,7 @@ export const PROVAS = [
   { id: 'extensora', name: 'Cadeira extensora', unit: 'kg', inPhrase: 'na cadeira extensora' },
   { id: 'flexora', name: 'Mesa flexora', unit: 'kg', inPhrase: 'na mesa flexora' },
   { id: 'panturrilha', name: 'Panturrilha', unit: 'kg', inPhrase: 'na panturrilha' },
+  { id: 'kettlebell', name: 'Kettlebell swing', unit: 'kg', inPhrase: 'no kettlebell swing' },
   { id: 'prancha', name: 'Prancha', unit: 's', inPhrase: 'na prancha' },
 ] as const satisfies readonly {
   id: string
@@ -48,9 +59,9 @@ export function getProva(id: string | undefined): Prova | undefined {
 
 /**
  * Exercícios do catálogo inicial que já nascem ligados a uma prova. Só os
- * casos sem dúvida: com halteres a carga costuma ser anotada por mão, e
- * compará-la com a barra de um personagem seria injusto — esses ficam para a
- * pessoa ligar se quiser.
+ * casos sem dúvida. Com halteres a carga costuma ser anotada por mão: o
+ * desenvolvimento tem prova própria por mão; supino inclinado e rosca martelo
+ * não têm, e ficam para a pessoa ligar se quiser.
  */
 export const PROVA_BY_SEED_NAME: Record<string, ProvaId> = {
   'Supino reto': 'supino',
@@ -64,6 +75,7 @@ export const PROVA_BY_SEED_NAME: Record<string, ProvaId> = {
   'Cadeira extensora': 'extensora',
   'Mesa flexora': 'flexora',
   'Panturrilha em pé': 'panturrilha',
+  'Desenvolvimento com halteres': 'desenvolvimento-halteres',
   Prancha: 'prancha',
 }
 
@@ -89,13 +101,16 @@ export interface Character {
    * Ausente é "não disputa esta prova": nem todo personagem tem todas.
    */
   loads: Partial<Record<ProvaId, number>>
+  /** Números ainda em revisão: a página do personagem avisa. */
+  provisional?: boolean
 }
 
 /**
- * Os personagens. Vazio até o elenco chegar; a Arena mostra só as suas marcas
- * enquanto isso.
+ * Os personagens, um arquivo por jogo em `catalog/`. Cada arquivo guarda os
+ * números como vieram da fonte (libras, observações) e converte aqui na hora
+ * de montar o personagem.
  */
-export const CHARACTERS: Character[] = []
+export const CHARACTERS: Character[] = [...GTA6_CHARACTERS]
 
 export function getCharacter(id: string | undefined): Character | undefined {
   return CHARACTERS.find((character) => character.id === id)

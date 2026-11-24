@@ -84,6 +84,7 @@ export function CharacterPage() {
         <section className="card arena-hero">
           <CharacterAvatar character={character} size="lg" />
           {character.feat && <p className="arena-hero__feat">“{character.feat}”</p>}
+          {character.provisional && <span className="chip chip--warn">Pesos em revisão</span>}
 
           {result.ratio !== undefined ? (
             <span className={result.ratio >= 1 ? 'chip chip--accent' : 'chip'}>
@@ -140,7 +141,9 @@ export function CharacterPage() {
             <thead>
               <tr>
                 <th>Prova</th>
-                <th>Personagem</th>
+                {/* Primeiro nome: "Personagem" alargava a coluna e empurrava o % para
+                    fora da tela num iPhone. */}
+                <th>{character.name.split(' ')[0]}</th>
                 <th>Você</th>
                 <th>%</th>
               </tr>
@@ -167,6 +170,8 @@ export function CharacterPage() {
         <p className="hint">
           “—” é prova sem exercício ligado ou sem série nos últimos {STRENGTH_WINDOW_DAYS}{' '}
           dias. Na média, cada prova conta no máximo {formatRatio(RATIO_CAP)}.
+          {character.provisional &&
+            ' Os números deste personagem foram vistos no jogo e ainda estão sendo conferidos.'}
         </p>
       </div>
     </>

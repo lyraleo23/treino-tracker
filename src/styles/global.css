@@ -1690,9 +1690,16 @@ html.is-scroll-locked body {
   color: var(--accent);
 }
 
-/* Carga e unidade numa linha só: "73,3 / kg" quebrado parece dois números. */
+/* Carga e unidade numa linha só: "73,3 / kg" quebrado parece dois números.
+   Com quatro colunas sem quebra, o respiro lateral encolhe para caber em 320px. */
 .table--marks td:not(:first-child) {
   white-space: nowrap;
+}
+
+.table--marks th,
+.table--marks td {
+  padding-left: 4px;
+  padding-right: 4px;
 }
 
 .table td.is-beaten {

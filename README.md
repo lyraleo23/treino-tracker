@@ -72,8 +72,11 @@ sem backend e sem cadastro. Todos os dados ficam no próprio aparelho (IndexedDB
     limitada a 150%) diz **qual personagem você é** — o mais forte que você alcança
     —, quem vem a seguir e o ranking completo. Na tela do exercício, a escada da
     prova mostra quando cada personagem foi vencido.
-  - **Personagens** ficam em `src/db/characters.ts`: nome, jogo, frase e a carga de
-    cada prova que tiverem (nem todo personagem tem todas). A foto é escolhida no
+  - **Personagens** ficam em `src/db/catalog/`, um arquivo por jogo, com as cargas
+    como vieram da fonte (o GTA VI guarda as libras observadas no jogo e converte
+    para kg). Nem todo personagem tem todas as provas. O primeiro elenco é o do
+    **GTA VI** — Jason e Lucia —, com pesos ainda em revisão e sem divisão por nível
+    de força enquanto a correspondência carga × nível não estiver comprovada. A foto é escolhida no
     celular, na página do personagem, e vai no backup junto com as fotos dos
     exercícios. Imagens que puderem ser publicadas também podem vir com o app, em
     `public/personagens/` — o repositório é público.
