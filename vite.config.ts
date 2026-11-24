@@ -41,7 +41,9 @@ export default defineConfig(({ command, isPreview }) => ({
         ],
       },
       workbox: {
-        globPatterns: ['**/*.{js,css,html,svg,png,ico,woff2}'],
+        // webp e jpg para as imagens de personagem em public/personagens/, se um
+        // dia vierem com o app: precisam funcionar offline como o resto.
+        globPatterns: ['**/*.{js,css,html,svg,png,webp,jpg,jpeg,ico,woff2}'],
         cleanupOutdatedCaches: true,
       },
     }),

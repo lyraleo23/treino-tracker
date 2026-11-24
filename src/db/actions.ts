@@ -22,6 +22,7 @@ import {
   type Workout,
   type WorkoutItem,
 } from './db'
+import type { ProvaId } from './characters'
 import { newId } from '../lib/id'
 import { startOfDay } from '../lib/format'
 import { computeItemNutrition } from '../lib/nutrition'
@@ -37,6 +38,7 @@ export async function createExercise(data: {
   photo?: Blob
   cardioFields?: CardioField[]
   weightStep?: number
+  prova?: ProvaId
 }): Promise<string> {
   const exercise: Exercise = {
     id: newId(),
@@ -47,6 +49,7 @@ export async function createExercise(data: {
     videoUrl: data.videoUrl?.trim() || undefined,
     cardioFields: data.cardioFields,
     weightStep: data.weightStep,
+    prova: data.prova,
     photo: data.photo,
     photoUpdatedAt: data.photo ? Date.now() : undefined,
     archived: 0,
@@ -70,6 +73,7 @@ export async function updateExercise(
       | 'videoUrl'
       | 'cardioFields'
       | 'weightStep'
+      | 'prova'
     >
   >,
 ): Promise<void> {
@@ -82,6 +86,15 @@ export async function setExercisePhoto(id: string, photo: Blob | undefined): Pro
     photo,
     photoUpdatedAt: photo ? Date.now() : undefined,
   })
+}
+
+/** Foto de um personagem da Arena. Passar `undefined` volta para as iniciais. */
+export async function setCharacterPhoto(
+  characterId: string,
+  photo: Blob | undefined,
+): Promise<void> {
+  if (photo) await db.characterPhotos.put({ characterId, photo, updatedAt: Date.now() })
+  else await db.characterPhotos.delete(characterId)
 }
 
 /** Tira o exercício do catálogo sem tocar no que já foi levantado com ele. */

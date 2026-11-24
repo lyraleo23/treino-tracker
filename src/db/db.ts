@@ -1,5 +1,6 @@
 import Dexie, { type Table } from 'dexie'
 import { newId } from '../lib/id'
+import { PROVA_BY_SEED_NAME, type ProvaId } from './characters'
 
 /**
  * Repetições (peso × reps), tempo (duração) ou aeróbico (esteira, bicicleta,
@@ -375,8 +376,24 @@ export interface Exercise {
    * haltere pequeno, 5 kg no leg press. Ausente usa DEFAULT_WEIGHT_STEP.
    */
   weightStep?: number
+  /**
+   * Prova da Arena que este exercício disputa. É o que liga a máquina da
+   * academia aos personagens; ausente, o exercício fica fora da Arena.
+   */
+  prova?: ProvaId
   archived: Flag
   createdAt: number
+}
+
+/**
+ * Foto de um personagem da Arena, escolhida no celular. O personagem em si
+ * vive no código (db/characters.ts); só a imagem é do aparelho.
+ */
+export interface CharacterPhoto {
+  /** O `id` do personagem no catálogo. */
+  characterId: string
+  photo: Blob
+  updatedAt: number
 }
 
 /** Fim do ciclo do programa: por data-limite ou por número de sessões. */
@@ -588,6 +605,7 @@ class TreinoDB extends Dexie {
   setBlocks!: Table<SetBlock, string>
   sessions!: Table<Session, string>
   setLogs!: Table<SetLog, string>
+  characterPhotos!: Table<CharacterPhoto, string>
 
   constructor() {
     super('treino-tracker')
@@ -731,6 +749,22 @@ class TreinoDB extends Dexie {
           .table('settings')
           .toCollection()
           .modify((settings: Settings) => migrarMetasDaDieta(settings))
+      })
+
+    // Arena: tabela nova para as fotos dos personagens, e os exercícios do
+    // catálogo inicial já ligados à prova deles. Só nesta subida de versão —
+    // depois disso, desligar a prova de um exercício é escolha e fica. Numa
+    // instalação nova quem liga é o seed.
+    this.version(8)
+      .stores({ characterPhotos: 'characterId' })
+      .upgrade(async (tx) => {
+        await tx
+          .table('exercises')
+          .toCollection()
+          .modify((exercise: Exercise) => {
+            const prova = PROVA_BY_SEED_NAME[exercise.name]
+            if (!exercise.prova && prova) exercise.prova = prova
+          })
       })
   }
 }

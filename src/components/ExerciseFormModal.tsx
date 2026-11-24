@@ -7,6 +7,7 @@ import {
   type ExerciseKind,
 } from '../db/db'
 import { createExercise, setExercisePhoto, updateExercise } from '../db/actions'
+import { PROVAS, type ProvaId } from '../db/characters'
 import { useObjectUrl } from '../hooks/useObjectUrl'
 import { CARDIO_LABELS, formatNumber } from '../lib/format'
 
@@ -49,10 +50,17 @@ export function ExerciseFormModal({ exercise, initialName, onClose, onSaved }: P
     exercise?.cardioFields ?? DEFAULT_CARDIO_FIELDS,
   )
   const [weightStep, setWeightStep] = useState(exercise?.weightStep ?? DEFAULT_WEIGHT_STEP)
+  const [prova, setProva] = useState<ProvaId | undefined>(exercise?.prova)
   const [photo, setPhoto] = useState<Blob | undefined>(exercise?.photo)
   const [photoError, setPhotoError] = useState<string | null>(null)
   const photoInput = useRef<HTMLInputElement>(null)
   const photoUrl = useObjectUrl(photo)
+
+  // Repetições disputam provas de carga; tempo, as de segundos. Trocar a
+  // medição esconde a prova que não combina, e ela não é gravada.
+  const provaOptions = PROVAS.filter((option) => option.unit === (kind === 'time' ? 's' : 'kg'))
+  const provaToSave =
+    kind !== 'cardio' && provaOptions.some((option) => option.id === prova) ? prova : undefined
 
   const urlOk = isSafeUrl(videoUrl)
   const canSave = name.trim().length > 0 && urlOk
@@ -83,6 +91,7 @@ export function ExerciseFormModal({ exercise, initialName, onClose, onSaved }: P
         videoUrl: videoUrl.trim() || undefined,
         cardioFields,
         weightStep: step,
+        prova: provaToSave,
       })
       // A foto tem carimbo próprio, então vai por uma ação separada.
       if (photo !== exercise.photo) await setExercisePhoto(exercise.id, photo)
@@ -97,6 +106,7 @@ export function ExerciseFormModal({ exercise, initialName, onClose, onSaved }: P
         photo,
         cardioFields,
         weightStep: step,
+        prova: provaToSave,
       })
       onSaved?.(id)
     }
@@ -186,6 +196,37 @@ export function ExerciseFormModal({ exercise, initialName, onClose, onSaved }: P
               De quanto em quanto a carga sobe neste aparelho. É o que as sugestões de
               ajuste usam para arredondar — halteres pequenos costumam ir de 1 em 1,
               barra de 2,5 em 2,5, leg press de 5 em 5.
+            </span>
+          </div>
+        )}
+
+        {kind !== 'cardio' && (
+          <div className="field">
+            <span className="field__label">Prova da Arena</span>
+            <div className="chip-grid">
+              <button
+                type="button"
+                className={provaToSave === undefined ? 'chip-option is-active' : 'chip-option'}
+                aria-pressed={provaToSave === undefined}
+                onClick={() => setProva(undefined)}
+              >
+                Nenhuma
+              </button>
+              {provaOptions.map((option) => (
+                <button
+                  key={option.id}
+                  type="button"
+                  className={option.id === provaToSave ? 'chip-option is-active' : 'chip-option'}
+                  aria-pressed={option.id === provaToSave}
+                  onClick={() => setProva(option.id)}
+                >
+                  {option.name}
+                </button>
+              ))}
+            </div>
+            <span className="hint">
+              Com qual movimento este exercício disputa contra os personagens. Duas
+              máquinas podem ter a mesma prova — na média da Arena vale a melhor.
             </span>
           </div>
         )}

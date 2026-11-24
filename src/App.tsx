@@ -14,6 +14,8 @@ import { HistoryPage } from './pages/HistoryPage'
 import { SessionDetailPage } from './pages/SessionDetailPage'
 import { ExercisesPage } from './pages/ExercisesPage'
 import { SettingsPage } from './pages/SettingsPage'
+import { ArenaPage } from './pages/ArenaPage'
+import { CharacterPage } from './pages/CharacterPage'
 
 // A biblioteca de gráficos responde por metade do bundle e só é usada aqui,
 // então vira um chunk separado carregado sob demanda.
@@ -50,6 +52,8 @@ export function App() {
               </Suspense>
             }
           />
+          <Route path="/arena" element={<ArenaPage />} />
+          <Route path="/arena/:characterId" element={<CharacterPage />} />
           <Route path="/ajustes" element={<SettingsPage />} />
         </Route>
         {/* A sessão ocupa a tela inteira: sem a barra de abas para não distrair. */}
