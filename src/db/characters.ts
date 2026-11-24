@@ -79,6 +79,15 @@ export const PROVA_BY_SEED_NAME: Record<string, ProvaId> = {
   Prancha: 'prancha',
 }
 
+type Loads = Partial<Record<ProvaId, number>>
+
+/** Um nível do personagem ("Força 3") e as cargas dele nesse nível. */
+export interface CharacterLevel {
+  level: number
+  /** Mesma unidade de `Character.loads`. Prova ausente: não visto neste nível. */
+  loads: Loads
+}
+
 export interface Character {
   /**
    * Slug estável ("kratos"). A foto escolhida no celular é guardada por ele:
@@ -96,13 +105,67 @@ export interface Character {
    * pode ser publicada.
    */
   image?: string
+  /** Como o jogo chama os níveis: "Força" no GTA VI. Ausente, "Nível". */
+  levelLabel?: string
   /**
-   * Carga máxima numa repetição, em kg — ou segundos, nas provas de tempo.
-   * Ausente é "não disputa esta prova": nem todo personagem tem todas.
+   * Os níveis, cada um com as suas cargas. Nome, foto e frase são do
+   * personagem e valem para todos — só os números mudam de nível para nível.
+   * Basta um nível com carga para os níveis passarem a valer no lugar de
+   * `loads`.
    */
-  loads: Partial<Record<ProvaId, number>>
+  levels?: CharacterLevel[]
+  /**
+   * Cargas sem nível: o personagem inteiro num degrau só. Carga máxima numa
+   * repetição, em kg — ou segundos, nas provas de tempo. Ausente é "não
+   * disputa esta prova": nem todo personagem tem todas.
+   */
+  loads?: Loads
   /** Números ainda em revisão: a página do personagem avisa. */
   provisional?: boolean
+}
+
+/**
+ * Um degrau da Arena: um nível de um personagem, ou o personagem inteiro
+ * quando ele não tem níveis. É com degraus que a escada e a média trabalham —
+ * Jason na Força 2 e Jason na Força 4 disputam como rivais diferentes.
+ */
+export interface Rung {
+  /** "gta6-jason#3" ou só "gta6-jason": chave estável para listas e vitórias. */
+  key: string
+  character: Character
+  level?: number
+  loads: Loads
+}
+
+export function rungsOf(character: Character): Rung[] {
+  const levels = (character.levels ?? [])
+    .filter((level) => Object.keys(level.loads).length > 0)
+    .sort((a, b) => a.level - b.level)
+
+  if (levels.length > 0) {
+    return levels.map((level) => ({
+      key: `${character.id}#${level.level}`,
+      character,
+      level: level.level,
+      loads: level.loads,
+    }))
+  }
+
+  const loads = character.loads ?? {}
+  return Object.keys(loads).length > 0 ? [{ key: character.id, character, loads }] : []
+}
+
+/** "Força 3"; `undefined` para o personagem sem níveis. */
+export function levelName(rung: Pick<Rung, 'character' | 'level'>): string | undefined {
+  if (rung.level === undefined) return undefined
+  // Espaço que não quebra: "Força" numa linha e "4" na outra parece outra coisa.
+  return `${rung.character.levelLabel ?? 'Nível'}\u00a0${rung.level}`
+}
+
+/** "Jason Duval · Força 3" ou só "Jason Duval". */
+export function rungName(rung: Rung): string {
+  const level = levelName(rung)
+  return level ? `${rung.character.name} · ${level}` : rung.character.name
 }
 
 /**
@@ -111,6 +174,9 @@ export interface Character {
  * de montar o personagem.
  */
 export const CHARACTERS: Character[] = [...GTA6_CHARACTERS]
+
+/** Todos os degraus da Arena, de todos os personagens. */
+export const RUNGS: Rung[] = CHARACTERS.flatMap(rungsOf)
 
 export function getCharacter(id: string | undefined): Character | undefined {
   return CHARACTERS.find((character) => character.id === id)

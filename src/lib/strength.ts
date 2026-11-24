@@ -1,4 +1,4 @@
-import type { Character, ProvaId, ProvaUnit } from '../db/characters'
+import { rungsOf, type Character, type ProvaId, type ProvaUnit, type Rung } from '../db/characters'
 import { formatNumber, formatSeconds } from './format'
 
 /**
@@ -93,32 +93,28 @@ export function loadToReach(
   return Math.ceil(exact / step - 1e-9) * step
 }
 
-export function loadOf(character: Character, prova: ProvaId): number | undefined {
-  return character.loads[prova]
+export function loadOf(rung: Rung, prova: ProvaId): number | undefined {
+  return rung.loads[prova]
 }
 
-/** A escada de uma prova, do personagem mais fraco ao mais forte. */
+/** A escada de uma prova, do degrau mais fraco ao mais forte. */
 export interface Duel {
   /** O mais fraco entre os que ainda estão na sua frente. */
-  rival?: Character
+  rival?: Rung
   /** Os que você já alcançou (empatar conta), do mais fraco ao mais forte. */
-  beaten: Character[]
+  beaten: Rung[]
   /** Os que estão na frente, do mais fraco ao mais forte. */
-  ahead: Character[]
+  ahead: Rung[]
 }
 
-export function duelFor(
-  prova: ProvaId,
-  value: number | undefined,
-  characters: Character[],
-): Duel {
-  const contenders = characters
-    .filter((character) => loadOf(character, prova) !== undefined)
+export function duelFor(prova: ProvaId, value: number | undefined, rungs: Rung[]): Duel {
+  const contenders = rungs
+    .filter((rung) => loadOf(rung, prova) !== undefined)
     .sort((a, b) => loadOf(a, prova)! - loadOf(b, prova)!)
 
   const beaten =
-    value === undefined ? [] : contenders.filter((c) => loadOf(c, prova)! <= value)
-  const ahead = contenders.filter((c) => !beaten.includes(c))
+    value === undefined ? [] : contenders.filter((r) => loadOf(r, prova)! <= value)
+  const ahead = contenders.filter((r) => !beaten.includes(r))
   return { rival: ahead[0], beaten, ahead }
 }
 
@@ -130,50 +126,77 @@ export interface ProvaComparison {
   ratio: number
 }
 
-export interface CharacterResult {
-  character: Character
+export interface RungResult {
+  rung: Rung
   /** As provas que vocês dois têm. */
   shared: ProvaComparison[]
   /** Média das razões; ausente quando faltam provas em comum. */
   ratio?: number
 }
 
+/** O personagem inteiro: como você está em cada nível dele. */
+export interface CharacterSummary {
+  character: Character
+  /** Um por nível, do mais fraco ao mais forte. */
+  results: RungResult[]
+  /** O nível mais alto que você alcança. */
+  reached?: RungResult
+  /** O primeiro nível acima do alcançado que já dá para comparar. */
+  next?: RungResult
+}
+
 export interface Standing {
-  /** Os comparáveis, do mais forte (menor razão) ao mais fraco. */
-  ranked: CharacterResult[]
-  /** Sem provas em comum suficientes. */
-  unranked: CharacterResult[]
-  /** "Você é": o mais forte que você alcança na média. */
-  you?: CharacterResult
+  /** Os degraus comparáveis, do mais forte (menor razão) ao mais fraco. */
+  ranked: RungResult[]
+  /** Degraus sem provas em comum suficientes. */
+  unranked: RungResult[]
+  /** "Você é": o degrau mais forte que você alcança na média. */
+  you?: RungResult
   /** O que está mais perto, logo na frente. */
-  next?: CharacterResult
+  next?: RungResult
+  /** Os mesmos resultados agrupados por personagem, na ordem do catálogo. */
+  characters: CharacterSummary[]
 }
 
 export function compareWith(
-  character: Character,
+  rung: Rung,
   marks: Partial<Record<ProvaId, number>>,
-): CharacterResult {
+): RungResult {
   const shared: ProvaComparison[] = []
-  for (const [prova, theirs] of Object.entries(character.loads) as [ProvaId, number][]) {
+  for (const [prova, theirs] of Object.entries(rung.loads) as [ProvaId, number][]) {
     const yours = marks[prova]
     if (yours === undefined || !(theirs > 0)) continue
     shared.push({ prova, yours, theirs, ratio: Math.min(yours / theirs, RATIO_CAP) })
   }
 
-  const needed = Math.max(1, Math.min(MIN_SHARED_PROVAS, Object.keys(character.loads).length))
+  const needed = Math.max(1, Math.min(MIN_SHARED_PROVAS, Object.keys(rung.loads).length))
   const ratio =
     shared.length >= needed
       ? shared.reduce((sum, item) => sum + item.ratio, 0) / shared.length
       : undefined
 
-  return { character, shared, ratio }
+  return { rung, shared, ratio }
+}
+
+export function summarize(character: Character, results: RungResult[]): CharacterSummary {
+  const reached = results.filter((result) => result.ratio !== undefined && result.ratio >= 1).at(-1)
+  const above = reached
+    ? results.filter((result) => (result.rung.level ?? 0) > (reached.rung.level ?? 0))
+    : results
+  const next = above.find((result) => result.ratio !== undefined && result.ratio < 1)
+  return { character, results, reached, next }
 }
 
 export function computeStanding(
   marks: Partial<Record<ProvaId, number>>,
   characters: Character[],
 ): Standing {
-  const results = characters.map((character) => compareWith(character, marks))
+  const byCharacter = characters.map((character) => ({
+    character,
+    results: rungsOf(character).map((rung) => compareWith(rung, marks)),
+  }))
+  const results = byCharacter.flatMap((item) => item.results)
+
   const ranked = results
     .filter((result) => result.ratio !== undefined)
     .sort((a, b) => a.ratio! - b.ratio!)
@@ -185,7 +208,13 @@ export function computeStanding(
   const you = youIndex >= 0 ? ranked[youIndex] : undefined
   const next = youIndex === -1 ? ranked[ranked.length - 1] : ranked[youIndex - 1]
 
-  return { ranked, unranked, you, next }
+  return {
+    ranked,
+    unranked,
+    you,
+    next,
+    characters: byCharacter.map((item) => summarize(item.character, item.results)),
+  }
 }
 
 /** "53,3 kg" ou "2:30", conforme a unidade da prova. */

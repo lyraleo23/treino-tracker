@@ -2,7 +2,7 @@ import { useNavigate } from 'react-router-dom'
 import { useLiveQuery } from 'dexie-react-hooks'
 import type { Exercise } from '../db/db'
 import { getExerciseDuel } from '../db/arena'
-import type { Character } from '../db/characters'
+import { levelName, type Rung } from '../db/characters'
 import {
   formatMark,
   loadOf,
@@ -43,34 +43,36 @@ export function DuelLadder({ exercise }: Props) {
   const { prova, mark, duel, beatenAt } = result
   const contenders = duel.beaten.length + duel.ahead.length
 
-  const row = (character: Character, beaten: boolean) => (
-    <button
-      key={character.id}
-      type="button"
-      className="list__item"
-      onClick={() =>
-        navigate(`/arena/${character.id}`, {
-          state: { from: `/exercicios/${exercise.id}`, label: exercise.name },
-        })
-      }
-    >
-      <CharacterAvatar character={character} />
-      <div className="list__main">
-        <div className="list__name">{character.name}</div>
-        <div className="list__meta">
-          {beaten
-            ? `vencido em ${formatDate(beatenAt[character.id] ?? Date.now())}`
-            : character === duel.rival
-              ? 'seu rival'
-              : character.game}
+  const row = (rung: Rung, beaten: boolean) => {
+    const level = levelName(rung)
+    const status = beaten
+      ? `vencido em ${formatDate(beatenAt[rung.key] ?? Date.now())}`
+      : rung === duel.rival
+        ? 'seu rival'
+        : rung.character.game
+    return (
+      <button
+        key={rung.key}
+        type="button"
+        className="list__item"
+        onClick={() =>
+          navigate(`/arena/${rung.character.id}`, {
+            state: { from: `/exercicios/${exercise.id}`, label: exercise.name, level: rung.level },
+          })
+        }
+      >
+        <CharacterAvatar character={rung.character} />
+        <div className="list__main">
+          <div className="list__name">{rung.character.name}</div>
+          <div className="list__meta">{level ? `${level} · ${status}` : status}</div>
         </div>
-      </div>
-      <span className={beaten ? 'list__value is-beaten' : 'list__value'}>
-        {beaten && '✓ '}
-        {formatMark(loadOf(character, prova.id)!, prova.unit)}
-      </span>
-    </button>
-  )
+        <span className={beaten ? 'list__value is-beaten' : 'list__value'}>
+          {beaten && '✓ '}
+          {formatMark(loadOf(rung, prova.id)!, prova.unit)}
+        </span>
+      </button>
+    )
+  }
 
   return (
     <>
@@ -88,7 +90,7 @@ export function DuelLadder({ exercise }: Props) {
       ) : (
         <div className="list">
           {/* Do mais forte para o mais fraco, como um placar: você no meio. */}
-          {[...duel.ahead].reverse().map((character) => row(character, false))}
+          {[...duel.ahead].reverse().map((rung) => row(rung, false))}
           <div className="list__item list__item--you">
             <span className="avatar avatar--md avatar--you" aria-hidden="true">
               💪
@@ -109,7 +111,7 @@ export function DuelLadder({ exercise }: Props) {
               {mark ? formatMark(mark.value, prova.unit) : '—'}
             </span>
           </div>
-          {[...duel.beaten].reverse().map((character) => row(character, true))}
+          {[...duel.beaten].reverse().map((rung) => row(rung, true))}
         </div>
       )}
     </>

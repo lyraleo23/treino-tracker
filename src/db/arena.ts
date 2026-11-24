@@ -1,13 +1,6 @@
 import Dexie from 'dexie'
 import { db, type Exercise, type SetLog } from './db'
-import {
-  CHARACTERS,
-  getProva,
-  PROVAS,
-  type Character,
-  type Prova,
-  type ProvaId,
-} from './characters'
+import { CHARACTERS, getProva, PROVAS, RUNGS, type Prova, type ProvaId, type Rung } from './characters'
 import {
   computeStanding,
   duelFor,
@@ -64,8 +57,11 @@ export interface ExerciseDuel {
    * Alcançados nesta sessão: estavam na frente da melhor marca de antes dela e
    * agora não estão mais. Vazio fora de uma sessão.
    */
-  newlyBeaten: Character[]
-  /** Quando cada vencido foi alcançado: a primeira série da janela que chegou lá. */
+  newlyBeaten: Rung[]
+  /**
+   * Quando cada degrau vencido foi alcançado (pela `Rung.key`): a primeira
+   * série da janela que chegou lá.
+   */
   beatenAt: Record<string, number>
 }
 
@@ -89,17 +85,17 @@ export async function getExerciseDuel(
   const scored = score(logs, prova)
   const mark = best(scored)
   const before = best(scored.filter((item) => item.log.sessionId !== sessionId))
-  const duel = duelFor(prova.id, mark?.value, CHARACTERS)
+  const duel = duelFor(prova.id, mark?.value, RUNGS)
 
   const newlyBeaten = sessionId
-    ? duel.beaten.filter((c) => before === undefined || loadOf(c, prova.id)! > before.value)
+    ? duel.beaten.filter((r) => before === undefined || loadOf(r, prova.id)! > before.value)
     : []
 
   const chronological = [...scored].sort((a, b) => a.log.completedAt - b.log.completedAt)
   const beatenAt: Record<string, number> = {}
-  for (const character of duel.beaten) {
-    const first = chronological.find((item) => item.value >= loadOf(character, prova.id)!)
-    if (first) beatenAt[character.id] = first.log.completedAt
+  for (const rung of duel.beaten) {
+    const first = chronological.find((item) => item.value >= loadOf(rung, prova.id)!)
+    if (first) beatenAt[rung.key] = first.log.completedAt
   }
 
   return { prova, mark, duel, newlyBeaten, beatenAt }

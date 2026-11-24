@@ -1,4 +1,4 @@
-import type { Character, ProvaId } from '../characters'
+import type { Character, CharacterLevel, ProvaId } from '../characters'
 
 /**
  * GTA VI — cargas observadas no jogo, tiradas do levantamento "GTA VI —
@@ -6,10 +6,15 @@ import type { Character, ProvaId } from '../characters'
  * em libras, como aparecem na tela; a conversão para kg acontece só na hora de
  * montar o personagem.
  *
- * Ainda em revisão. Em especial: NÃO há correspondência comprovada entre estas
- * cargas e os Strength Levels 1–4, então cada protagonista é um personagem só,
- * sem nível. Quando o mapa de níveis existir, cada nível vira um personagem
- * ("Jason · Força 2") e a escada da Arena ganha degraus.
+ * Duas camadas:
+ * - `JASON` / `LUCIA`: a referência sem nível, com tudo o que já foi visto.
+ *   É o que a Arena usa enquanto nenhum nível tiver carga.
+ * - `JASON_LEVELS` / `LUCIA_LEVELS`: a carga de cada Strength Level (1 a 4),
+ *   a preencher conforme o levantamento separar os níveis. Basta UM nível
+ *   com carga para o personagem passar a disputar por níveis — e a
+ *   referência sai da Arena. Nível sem carga numa prova só não disputa ela.
+ *
+ * Não preencha nível por suposição: só com a carga vista naquele nível.
  */
 
 /** O critério de confiabilidade do levantamento. */
@@ -33,6 +38,17 @@ interface Observation {
 }
 
 type Sheet = Partial<Record<ProvaId, Observation>>
+
+/** A carga vista num nível: um número por exercício. */
+interface LevelObservation {
+  /** Em lb, como aparece na tela. */
+  lbs: number
+  confidence: Confidence
+  note?: string
+}
+
+type LevelSheet = Partial<Record<ProvaId, LevelObservation>>
+type Levels = Record<1 | 2 | 3 | 4, LevelSheet>
 
 const JASON: Sheet = {
   supino: {
@@ -94,6 +110,12 @@ const LUCIA: Sheet = {
   // fazendo, mas sem carga legível.
 }
 
+// Exemplo de preenchimento, quando a carga do nível for vista no jogo:
+//   2: { supino: { lbs: 185, confidence: 'confirmado' } },
+const JASON_LEVELS: Levels = { 1: {}, 2: {}, 3: {}, 4: {} }
+
+const LUCIA_LEVELS: Levels = { 1: {}, 2: {}, 3: {}, 4: {} }
+
 /**
  * Cargas vistas em menus de máquina da Vice Seven Gym, sem personagem. Ficam
  * registradas para a revisão, mas não entram em ninguém.
@@ -105,12 +127,29 @@ export const GTA6_UNASSIGNED = {
 
 const LB_TO_KG = 0.45359237
 
-function toLoads(sheet: Sheet): Character['loads'] {
-  const loads: Character['loads'] = {}
+function lbToKg(lbs: number): number {
+  return Math.round(lbs * LB_TO_KG * 10) / 10
+}
+
+function toLoads(sheet: Sheet): CharacterLevel['loads'] {
+  const loads: CharacterLevel['loads'] = {}
   for (const [prova, observation] of Object.entries(sheet) as [ProvaId, Observation][]) {
-    loads[prova] = Math.round(observation.arena * LB_TO_KG * 10) / 10
+    loads[prova] = lbToKg(observation.arena)
   }
   return loads
+}
+
+function toLevels(levels: Levels): CharacterLevel[] {
+  return Object.entries(levels).map(([level, sheet]) => {
+    const loads: CharacterLevel['loads'] = {}
+    for (const [prova, observation] of Object.entries(sheet) as [
+      ProvaId,
+      LevelObservation,
+    ][]) {
+      loads[prova] = lbToKg(observation.lbs)
+    }
+    return { level: Number(level), loads }
+  })
 }
 
 export const GTA6_CHARACTERS: Character[] = [
@@ -120,6 +159,8 @@ export const GTA6_CHARACTERS: Character[] = [
     game: 'GTA VI',
     feat: 'Treina na Ajax Gym, em Vice City.',
     provisional: true,
+    levelLabel: 'Força',
+    levels: toLevels(LUCIA_LEVELS),
     loads: toLoads(LUCIA),
   },
   {
@@ -128,6 +169,8 @@ export const GTA6_CHARACTERS: Character[] = [
     game: 'GTA VI',
     feat: 'Supino, agachamento e terra na varanda de casa, em Key Lento.',
     provisional: true,
+    levelLabel: 'Força',
+    levels: toLevels(JASON_LEVELS),
     loads: toLoads(JASON),
   },
 ]

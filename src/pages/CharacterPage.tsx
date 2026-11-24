@@ -3,7 +3,7 @@ import { useLocation, useParams } from 'react-router-dom'
 import { useLiveQuery } from 'dexie-react-hooks'
 import { db } from '../db/db'
 import { getArena } from '../db/arena'
-import { getCharacter, PROVAS } from '../db/characters'
+import { getCharacter, levelName, PROVAS, rungsOf } from '../db/characters'
 import { setCharacterPhoto } from '../db/actions'
 import {
   compareWith,
@@ -12,6 +12,7 @@ import {
   MIN_SHARED_PROVAS,
   RATIO_CAP,
   STRENGTH_WINDOW_DAYS,
+  summarize,
 } from '../lib/strength'
 import { resizeImage } from '../lib/image'
 import { PageHeader } from '../components/PageHeader'
@@ -21,9 +22,14 @@ import { CharacterAvatar } from '../components/CharacterAvatar'
 interface FromState {
   from?: string
   label?: string
+  /** Nível para abrir já selecionado — o do rival que trouxe até aqui. */
+  level?: number
 }
 
-/** Um personagem: a foto, o feito e você contra ele, prova a prova. */
+/**
+ * Um personagem: a foto, o feito e você contra ele, prova a prova — nível a
+ * nível, quando ele tem níveis.
+ */
 export function CharacterPage() {
   const { characterId } = useParams<{ characterId: string }>()
   const { state } = useLocation()
@@ -33,6 +39,8 @@ export function CharacterPage() {
 
   const photoInput = useRef<HTMLInputElement>(null)
   const [photoError, setPhotoError] = useState<string | null>(null)
+  /** `undefined` deixa a tela escolher: o próximo nível a vencer. */
+  const [pickedLevel, setPickedLevel] = useState<number | undefined>(origin.level)
 
   const character = getCharacter(characterId)
   const arena = useLiveQuery(getArena, [])
@@ -66,8 +74,18 @@ export function CharacterPage() {
       .filter((item) => item.mark)
       .map((item) => [item.prova.id, item.mark!.value]),
   )
-  const result = compareWith(character, yours)
-  const provas = PROVAS.filter((prova) => character.loads[prova.id] !== undefined)
+  const summary = summarize(
+    character,
+    rungsOf(character).map((rung) => compareWith(rung, yours)),
+  )
+  const leveled = summary.results.some((item) => item.rung.level !== undefined)
+  const result =
+    summary.results.find((item) => item.rung.level === pickedLevel) ??
+    summary.next ??
+    summary.reached ??
+    summary.results[0]
+  const loads = result?.rung.loads ?? {}
+  const provas = PROVAS.filter((prova) => loads[prova.id] !== undefined)
   const needed = Math.min(MIN_SHARED_PROVAS, provas.length)
 
   return (
@@ -86,17 +104,10 @@ export function CharacterPage() {
           {character.feat && <p className="arena-hero__feat">“{character.feat}”</p>}
           {character.provisional && <span className="chip chip--warn">Pesos em revisão</span>}
 
-          {result.ratio !== undefined ? (
-            <span className={result.ratio >= 1 ? 'chip chip--accent' : 'chip'}>
-              {result.ratio >= 1 ? '✓ Alcançado · ' : ''}
-              você aguenta {formatRatio(result.ratio)} em média
+          {summary.reached && leveled && (
+            <span className="chip chip--accent">
+              ✓ Alcançado: {levelName(summary.reached.rung)}
             </span>
-          ) : (
-            arena && (
-              <span className="chip">
-                Faltam provas em comum: {result.shared.length} de {needed}
-              </span>
-            )
           )}
 
           <div className="row" style={{ gap: 8 }}>
@@ -135,7 +146,39 @@ export function CharacterPage() {
           )}
         </section>
 
-        <h2 className="section-title">Prova a prova</h2>
+        {leveled && (
+          <>
+            <h2 className="section-title">{character.levelLabel ?? 'Nível'}</h2>
+            <div className="segmented">
+              {summary.results.map((item) => {
+                const reached = item.ratio !== undefined && item.ratio >= 1
+                return (
+                  <button
+                    key={item.rung.key}
+                    type="button"
+                    aria-pressed={item === result}
+                    aria-label={`${levelName(item.rung)}${reached ? ', alcançado' : ''}`}
+                    onClick={() => setPickedLevel(item.rung.level)}
+                  >
+                    {item.rung.level}
+                    {reached && ' ✓'}
+                  </button>
+                )
+              })}
+            </div>
+          </>
+        )}
+
+        <h2 className="section-title">
+          Prova a prova{leveled && result ? ` · ${levelName(result.rung)}` : ''}
+        </h2>
+        {result && arena && (
+          <p className="hint" style={{ marginTop: -4 }}>
+            {result.ratio !== undefined
+              ? `${result.ratio >= 1 ? '✓ Alcançado. ' : ''}Em média você aguenta ${formatRatio(result.ratio)} do que ${character.name.split(' ')[0]} aguenta${leveled ? ' neste nível' : ''}.`
+              : `Faltam provas em comum: ${result.shared.length} de ${needed}.`}
+          </p>
+        )}
         <div className="card card--tight">
           <table className="table table--marks">
             <thead>
@@ -150,7 +193,7 @@ export function CharacterPage() {
             </thead>
             <tbody>
               {provas.map((prova) => {
-                const theirs = character.loads[prova.id]!
+                const theirs = loads[prova.id]!
                 const mine = yours[prova.id]
                 const ratio = mine !== undefined ? mine / theirs : undefined
                 return (

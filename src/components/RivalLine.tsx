@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import { useLiveQuery } from 'dexie-react-hooks'
 import { DEFAULT_WEIGHT_STEP, type Exercise, type SetBlock } from '../db/db'
 import { getExerciseDuel } from '../db/arena'
-import type { Character } from '../db/characters'
+import { rungName, type Rung } from '../db/characters'
 import { beep } from '../lib/feedback'
 import {
   formatMark,
@@ -38,8 +38,8 @@ function repsForGoal(blocks: SetBlock[]): number | undefined {
   return undefined
 }
 
-function joinNames(characters: Character[]): string {
-  const names = characters.map((c) => c.name)
+function joinNames(rungs: Rung[]): string {
+  const names = rungs.map(rungName)
   if (names.length <= 1) return names.join('')
   return `${names.slice(0, -1).join(', ')} e ${names[names.length - 1]}`
 }
@@ -69,9 +69,9 @@ export function RivalLine({ exercise, sessionId, blocks }: Props) {
   const { prova, mark, duel, newlyBeaten } = result
   if (duel.beaten.length === 0 && duel.ahead.length === 0) return null
 
-  const open = (character: Character) =>
-    navigate(`/arena/${character.id}`, {
-      state: { from: `/sessao/${sessionId}`, label: 'Treino' },
+  const open = (rung: Rung) =>
+    navigate(`/arena/${rung.character.id}`, {
+      state: { from: `/sessao/${sessionId}`, label: 'Treino', level: rung.level },
     })
 
   const victory = newlyBeaten.length > 0 && (
@@ -124,10 +124,10 @@ export function RivalLine({ exercise, sessionId, blocks }: Props) {
     <>
       {victory}
       <button type="button" className="rival" onClick={() => open(rival)}>
-        <CharacterAvatar character={rival} size="sm" />
+        <CharacterAvatar character={rival.character} size="sm" />
         <div className="rival__text">
           <div>
-            Disputando com <strong>{rival.name}</strong>
+            Disputando com <strong>{rungName(rival)}</strong>
           </div>
           <div>
             {formatMark(theirs, prova.unit)}

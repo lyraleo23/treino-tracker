@@ -1,7 +1,7 @@
 import { useNavigate } from 'react-router-dom'
 import { useLiveQuery } from 'dexie-react-hooks'
 import { getArena } from '../db/arena'
-import { CHARACTERS, getProva } from '../db/characters'
+import { CHARACTERS, levelName, rungName, type Rung } from '../db/characters'
 import {
   formatMark,
   formatRatio,
@@ -10,7 +10,7 @@ import {
   RATIO_CAP,
   STRENGTH_METRIC,
   STRENGTH_WINDOW_DAYS,
-  type CharacterResult,
+  type CharacterSummary,
 } from '../lib/strength'
 import { formatDate } from '../lib/format'
 import { PageHeader } from '../components/PageHeader'
@@ -22,8 +22,40 @@ function provasLabel(count: number): string {
 }
 
 /**
- * A aba Arena: qual personagem você é pela média das provas, quem vem a
- * seguir, o ranking inteiro e as suas marcas de cada prova.
+ * A linha do personagem na lista: em que nível você está e quanto falta para
+ * o próximo. Sem níveis, a porcentagem da média, como num degrau só.
+ */
+function summaryText(summary: CharacterSummary): { meta: string; value: string; done: boolean } {
+  const { reached, next, results } = summary
+  const leveled = results.some((result) => result.rung.level !== undefined)
+
+  if (!leveled) {
+    const only = results[0]
+    if (only?.ratio === undefined) {
+      return { meta: 'Sem provas em comum suficientes', value: '—', done: false }
+    }
+    return {
+      meta: `${summary.character.game} · ${provasLabel(only.shared.length)}`,
+      value: `${only.ratio >= 1 ? '✓ ' : ''}${formatRatio(only.ratio)}`,
+      done: only.ratio >= 1,
+    }
+  }
+
+  const parts: string[] = []
+  if (reached) parts.push(`${levelName(reached.rung)} ✓`)
+  if (next) parts.push(`${levelName(next.rung)}: ${formatRatio(next.ratio!)}`)
+  if (parts.length === 0) parts.push('Sem provas em comum suficientes')
+
+  return {
+    meta: parts.join(' · '),
+    value: next ? formatRatio(next.ratio!) : reached ? '✓' : '—',
+    done: !!reached && !next,
+  }
+}
+
+/**
+ * A aba Arena: qual personagem (e nível) você é pela média das provas, quem
+ * vem a seguir, cada personagem com os níveis alcançados e as suas marcas.
  */
 export function ArenaPage() {
   const navigate = useNavigate()
@@ -35,37 +67,9 @@ export function ArenaPage() {
   if (!arena) return header
 
   const { marks, standing } = arena
-  const { ranked, unranked, you, next } = standing
-  const openCharacter = (result: CharacterResult) =>
-    navigate(`/arena/${result.character.id}`)
-
-  const rankRow = (result: CharacterResult) => {
-    const reached = result.ratio! >= 1
-    return (
-      <button
-        key={result.character.id}
-        type="button"
-        className="list__item"
-        onClick={() => openCharacter(result)}
-      >
-        <CharacterAvatar character={result.character} />
-        <div className="list__main">
-          <div className="list__name">{result.character.name}</div>
-          <div className="list__meta">
-            {result.character.game} · {provasLabel(result.shared.length)}
-          </div>
-        </div>
-        <span className={reached ? 'list__value is-beaten' : 'list__value'}>
-          {reached && '✓ '}
-          {formatRatio(result.ratio!)}
-        </span>
-      </button>
-    )
-  }
-
-  // O ranking vai do mais forte ao mais fraco; você entra onde a média cruza 100%.
-  const ahead = ranked.filter((result) => result.ratio! < 1)
-  const behind = ranked.filter((result) => result.ratio! >= 1)
+  const { you, next } = standing
+  const openRung = (rung: Rung) =>
+    navigate(`/arena/${rung.character.id}`, { state: { level: rung.level } })
 
   return (
     <>
@@ -85,32 +89,31 @@ export function ArenaPage() {
           </section>
         ) : you ? (
           <section className="card card--next arena-hero">
-            <CharacterAvatar character={you.character} size="lg" />
+            <CharacterAvatar character={you.rung.character} size="lg" />
             <div className="eyebrow">Você é</div>
-            <div className="card__title card__title--lg">{you.character.name}</div>
-            <div className="card__meta">{you.character.game}</div>
-            {you.character.feat && (
-              <p className="arena-hero__feat">“{you.character.feat}”</p>
+            <div className="card__title card__title--lg">{you.rung.character.name}</div>
+            {levelName(you.rung) && (
+              <span className="chip chip--accent">{levelName(you.rung)}</span>
             )}
-            <span className="chip chip--accent">
-              {formatRatio(you.ratio!)} do que {you.character.name} aguenta ·{' '}
-              {provasLabel(you.shared.length)}
+            <div className="card__meta">{you.rung.character.game}</div>
+            {you.rung.character.feat && (
+              <p className="arena-hero__feat">“{you.rung.character.feat}”</p>
+            )}
+            <span className="hint">
+              Em média você aguenta {formatRatio(you.ratio!)} do que {rungName(you.rung)}{' '}
+              aguenta · {provasLabel(you.shared.length)}
             </span>
-            <button
-              type="button"
-              className="link-btn"
-              onClick={() => openCharacter(you)}
-            >
+            <button type="button" className="link-btn" onClick={() => openRung(you.rung)}>
               Ver prova a prova
             </button>
           </section>
         ) : next ? (
           <section className="card arena-hero">
-            <CharacterAvatar character={next.character} size="lg" />
+            <CharacterAvatar character={next.rung.character} size="lg" />
             <div className="card__title">Você ainda não alcançou ninguém</div>
             <p className="hint" style={{ margin: 0 }}>
-              O mais perto é <strong>{next.character.name}</strong>: em média, você
-              aguenta {formatRatio(next.ratio!)} do que {next.character.name} aguenta.
+              O mais perto é <strong>{rungName(next.rung)}</strong>: em média, você aguenta{' '}
+              {formatRatio(next.ratio!)} do que esse personagem aguenta.
             </p>
           </section>
         ) : (
@@ -129,15 +132,11 @@ export function ArenaPage() {
         {you && next && (
           <>
             <h2 className="section-title">Próximo</h2>
-            <button
-              type="button"
-              className="card-button"
-              onClick={() => openCharacter(next)}
-            >
+            <button type="button" className="card-button" onClick={() => openRung(next.rung)}>
               <div className="row">
-                <CharacterAvatar character={next.character} />
+                <CharacterAvatar character={next.rung.character} />
                 <div className="list__main">
-                  <div className="list__name">{next.character.name}</div>
+                  <div className="list__name">{rungName(next.rung)}</div>
                   <div className="list__meta">
                     Você está em {formatRatio(next.ratio!)} · faltam{' '}
                     {formatRatio(1 - next.ratio!)}
@@ -154,61 +153,60 @@ export function ArenaPage() {
           </>
         )}
 
-        {ranked.length > 0 && (
+        {standing.characters.length > 0 && (
           <>
-            <h2 className="section-title">Ranking</h2>
+            <h2 className="section-title">Personagens</h2>
             <div className="list">
-              {ahead.map(rankRow)}
-              <div className="list__item list__item--you">
-                <span className="avatar avatar--md avatar--you" aria-hidden="true">
-                  💪
-                </span>
-                <div className="list__main">
-                  <div className="list__name">Você</div>
-                  <div className="list__meta">
-                    {behind.length === 0
-                      ? 'ainda atrás de todos'
-                      : ahead.length === 0
-                        ? 'no topo do ranking'
-                        : `à frente de ${behind.length}`}
-                  </div>
-                </div>
-              </div>
-              {behind.map(rankRow)}
+              {standing.characters.map((summary) => {
+                const { meta, value, done } = summaryText(summary)
+                const leveled = summary.results.some((r) => r.rung.level !== undefined)
+                const target = summary.next ?? summary.reached ?? summary.results[0]
+                return (
+                  <button
+                    key={summary.character.id}
+                    type="button"
+                    className="list__item"
+                    onClick={() =>
+                      navigate(`/arena/${summary.character.id}`, {
+                        state: { level: target?.rung.level },
+                      })
+                    }
+                  >
+                    <CharacterAvatar character={summary.character} />
+                    <div className="list__main">
+                      <div className="list__name">{summary.character.name}</div>
+                      <div className="list__meta">{meta}</div>
+                      {leveled && (
+                        <div className="level-pips" aria-hidden="true">
+                          {summary.results.map((result) => (
+                            <span
+                              key={result.rung.key}
+                              className={
+                                result.ratio !== undefined && result.ratio >= 1
+                                  ? 'level-pip is-reached'
+                                  : result === summary.next
+                                    ? 'level-pip is-next'
+                                    : 'level-pip'
+                              }
+                            >
+                              {result.rung.level}
+                            </span>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                    <span className={done ? 'list__value is-beaten' : 'list__value'}>
+                      {value}
+                    </span>
+                  </button>
+                )
+              })}
             </div>
             <p className="hint">
-              A porcentagem é a média de quanto você aguenta do que o personagem aguenta,
-              prova a prova (cada uma conta no máximo {formatRatio(RATIO_CAP)}).
+              A porcentagem é a média de quanto você aguenta do que o personagem aguenta
+              naquele nível, prova a prova (cada uma conta no máximo{' '}
+              {formatRatio(RATIO_CAP)}).
             </p>
-          </>
-        )}
-
-        {unranked.length > 0 && (
-          <>
-            <h2 className="section-title">Sem provas em comum suficientes</h2>
-            <div className="list">
-              {unranked.map((result) => (
-                <button
-                  key={result.character.id}
-                  type="button"
-                  className="list__item"
-                  onClick={() => openCharacter(result)}
-                >
-                  <CharacterAvatar character={result.character} />
-                  <div className="list__main">
-                    <div className="list__name">{result.character.name}</div>
-                    <div className="list__meta">
-                      Disputa:{' '}
-                      {Object.keys(result.character.loads)
-                        .map((id) => getProva(id)?.name)
-                        .filter(Boolean)
-                        .join(', ')}
-                    </div>
-                  </div>
-                  <span className="chevron">›</span>
-                </button>
-              ))}
-            </div>
           </>
         )}
 

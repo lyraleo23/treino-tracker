@@ -74,9 +74,12 @@ sem backend e sem cadastro. Todos os dados ficam no próprio aparelho (IndexedDB
     prova mostra quando cada personagem foi vencido.
   - **Personagens** ficam em `src/db/catalog/`, um arquivo por jogo, com as cargas
     como vieram da fonte (o GTA VI guarda as libras observadas no jogo e converte
-    para kg). Nem todo personagem tem todas as provas. O primeiro elenco é o do
-    **GTA VI** — Jason e Lucia —, com pesos ainda em revisão e sem divisão por nível
-    de força enquanto a correspondência carga × nível não estiver comprovada. A foto é escolhida no
+    para kg). Nem todo personagem tem todas as provas. Um personagem pode ter **níveis**
+    (a Força 1 a 4 do GTA VI): nome, foto e frase são um só, e cada nível tem as
+    próprias cargas e vira um degrau da Arena — "Disputando com Jason Duval · Força
+    3", "Você é Lucia Caminos · Força 2". O primeiro elenco é o do **GTA VI** — Jason
+    e Lucia —, com pesos ainda em revisão; enquanto nenhum nível tem carga, vale a
+    referência sem nível. A foto é escolhida no
     celular, na página do personagem, e vai no backup junto com as fotos dos
     exercícios. Imagens que puderem ser publicadas também podem vir com o app, em
     `public/personagens/` — o repositório é público.
