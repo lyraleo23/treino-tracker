@@ -59,6 +59,10 @@ sem backend e sem cadastro. Todos os dados ficam no próprio aparelho (IndexedDB
 - **Ciclo do treino**: data-limite ou número de sessões. Na última semana ou nas três
   últimas sessões aparece uma tarja de aviso no topo da tela de treinos; vencido, ela
   fica vermelha e oferece renovar o ciclo — sem nunca impedir de treinar.
+- **Temas**: em *Ajustes → Aparência* dá para trocar o visual do app. O **Padrão** é
+  o grafite com verde de sempre; o **GTA VI** pinta tudo com o pôr do sol neon —
+  noite roxa, rosa e laranja em degradê e o verde-água do mar. A escolha vale para
+  o aparelho (fica fora do backup) e é aplicada antes da primeira pintura, sem piscar.
 - **Backup**: dois caminhos separados — **importar plano** mescla e preserva todo o
   histórico; **restaurar backup** substitui tudo. Arquivos de versões anteriores são
   convertidos na importação.
@@ -116,7 +120,7 @@ src/
                histórico, catálogo, ajustes)
   components/  peças reutilizáveis (modais, timer, shell, ícones)
   hooks/       cronômetro por timestamp e wake lock
-  lib/         formatação pt-BR, ids e feedback sonoro
+  lib/         formatação pt-BR, ids, feedback sonoro e temas
 ```
 
 O modelo de dados vai de `Workout → WorkoutItem → SetBlock → SetLog`. O `SetLog`

@@ -1,4 +1,14 @@
-:root {
+/* --- Temas ----------------------------------------------------------- */
+
+/* Cada tema redefine os mesmos tokens. Valem no <html> (o tema do app) e
+   também num pedaço da tela: a prévia em Ajustes leva o próprio data-theme
+   para mostrar cada tema como ele é, seja qual for o ativo. Por isso todo
+   tema declara a lista inteira — um token derivado de outro (var(--accent))
+   seria resolvido no <html> e vazaria para a prévia.
+
+   O tema é escolhido em Ajustes e guardado por src/lib/theme.ts. */
+:root,
+[data-theme='padrao'] {
   --bg: #0d0f13;
   --surface: #161a21;
   --surface-2: #1e232c;
@@ -10,13 +20,67 @@
   --accent: #34d399;
   --accent-ink: #04150e;
   --accent-soft: rgba(52, 211, 153, 0.14);
+  /* Preenchimento das peças cheias na cor de destaque (botão principal, série
+     concluída, barra de progresso). Aqui é a própria cor; um tema pode trocar
+     por um degradê. */
+  --accent-fill: #34d399;
   --danger: #f87171;
   --danger-soft: rgba(248, 113, 113, 0.13);
   --warn: #fbbf24;
+  --info: #38bdf8;
+  /* Fundo decorativo atrás de tudo. O padrão é liso. */
+  --backdrop: none;
+
+  /* Cor de cada tipo de bloco de séries. Working e falha usam --accent e
+     --warn direto. */
+  --block-warmup: #64748b;
+  --block-feeder: #38bdf8;
+  --block-cluster: #ef4444;
+  --block-top: #f472b6;
+  --block-backoff: #a78bfa;
+  --block-drop: #fb923c;
+  --block-interval: #22d3ee;
 
   --radius: 14px;
   --radius-sm: 10px;
   --tabbar-h: 58px;
+
+  color-scheme: dark;
+}
+
+/* GTA VI: céu de fim de tarde em Leonida — noite roxa, rosa neon e laranja
+   do pôr do sol, e o verde-água do mar embaixo. */
+[data-theme='gta6'] {
+  --bg: #140a22;
+  --surface: #1d1030;
+  --surface-2: #28173f;
+  --surface-3: #34204f;
+  --border: #3b2757;
+  --text: #fff0f7;
+  --text-dim: #c7add9;
+  --text-faint: #8f76a6;
+  --accent: #ff4fa3;
+  --accent-ink: #26021a;
+  --accent-soft: rgba(255, 79, 163, 0.16);
+  --accent-fill: linear-gradient(100deg, #ff4fa3, #ff7a4a);
+  /* Vermelho puxado para o laranja: um vermelho rosado se confundiria com o
+     destaque. */
+  --danger: #ff5f45;
+  --danger-soft: rgba(255, 95, 69, 0.15);
+  --warn: #ffc23d;
+  --info: #2ee6d6;
+  --backdrop:
+    radial-gradient(90% 40% at 50% 0%, rgba(255, 79, 163, 0.2), transparent 70%),
+    radial-gradient(60% 30% at 100% 0%, rgba(255, 138, 61, 0.14), transparent 70%),
+    radial-gradient(90% 30% at 50% 100%, rgba(46, 230, 214, 0.08), transparent 70%);
+
+  --block-warmup: #8b7fa6;
+  --block-feeder: #2ee6d6;
+  --block-cluster: #ff5f45;
+  --block-top: #c77dff;
+  --block-backoff: #7d8cff;
+  --block-drop: #ff9a3d;
+  --block-interval: #38c8ff;
 
   color-scheme: dark;
 }
@@ -40,6 +104,17 @@ body {
   -webkit-font-smoothing: antialiased;
   /* Evita o "bounce" da rolagem arrastando o app inteiro no iOS */
   overscroll-behavior-y: none;
+}
+
+/* O fundo decorativo do tema fica preso à tela, atrás de todo o conteúdo.
+   `background-attachment: fixed` faria o mesmo, mas o Safari do iPhone ignora. */
+body::before {
+  content: '';
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  background: var(--backdrop);
 }
 
 button {
@@ -238,7 +313,7 @@ h3 {
 }
 
 .btn--primary {
-  background: var(--accent);
+  background: var(--accent-fill);
   border-color: var(--accent);
   color: var(--accent-ink);
 }
@@ -424,11 +499,11 @@ h3 {
 }
 
 .block--warmup {
-  --block-color: #64748b;
+  --block-color: var(--block-warmup);
 }
 
 .block--feeder {
-  --block-color: #38bdf8;
+  --block-color: var(--block-feeder);
 }
 
 .block--working {
@@ -436,19 +511,19 @@ h3 {
 }
 
 .block--cluster {
-  --block-color: #ef4444;
+  --block-color: var(--block-cluster);
 }
 
 .block--top {
-  --block-color: #f472b6;
+  --block-color: var(--block-top);
 }
 
 .block--backoff {
-  --block-color: #a78bfa;
+  --block-color: var(--block-backoff);
 }
 
 .block--drop {
-  --block-color: #fb923c;
+  --block-color: var(--block-drop);
 }
 
 .block--amrap {
@@ -456,7 +531,7 @@ h3 {
 }
 
 .block--interval {
-  --block-color: #22d3ee;
+  --block-color: var(--block-interval);
 }
 
 /* --- Campos de aeróbico ---------------------------------------------- */
@@ -638,7 +713,7 @@ h3 {
 }
 
 .chip--warn {
-  background: rgba(251, 191, 36, 0.14);
+  background: color-mix(in srgb, var(--warn) 14%, transparent);
   color: var(--warn);
 }
 
@@ -928,7 +1003,7 @@ html.is-scroll-locked body {
 }
 
 .check-btn.is-done {
-  background: var(--accent);
+  background: var(--accent-fill);
   border-color: var(--accent);
   color: var(--accent-ink);
 }
@@ -1056,7 +1131,7 @@ html.is-scroll-locked body {
 }
 
 .banner--descer {
-  background: rgba(251, 191, 36, 0.13);
+  background: color-mix(in srgb, var(--warn) 13%, transparent);
   border-color: color-mix(in srgb, var(--warn) 35%, transparent);
 }
 
@@ -1064,7 +1139,7 @@ html.is-scroll-locked body {
    faixa lateral grossa e o título na cor do alerta são o que pega o olho ao
    abrir o app. Âmbar enquanto falta pouco, vermelho depois do fim. */
 .banner--alert {
-  background: rgba(251, 191, 36, 0.13);
+  background: color-mix(in srgb, var(--warn) 13%, transparent);
   border-color: color-mix(in srgb, var(--warn) 45%, transparent);
   border-left: 5px solid var(--warn);
 }
@@ -1087,8 +1162,8 @@ html.is-scroll-locked body {
 }
 
 .banner--escada {
-  background: rgba(56, 189, 248, 0.12);
-  border-color: rgba(56, 189, 248, 0.35);
+  background: color-mix(in srgb, var(--info) 12%, transparent);
+  border-color: color-mix(in srgb, var(--info) 35%, transparent);
 }
 
 /* Antes → depois de cada bloco, para nada ser aplicado às cegas. */
@@ -1226,12 +1301,12 @@ html.is-scroll-locked body {
 .progress__fill {
   height: 100%;
   border-radius: 999px;
-  background: var(--accent);
+  background: var(--accent-fill);
   transition: width 0.25s ease;
 }
 
 .progress__fill.is-done {
-  background: var(--accent);
+  background: var(--accent-fill);
 }
 
 /* --- Gráfico --------------------------------------------------------- */
@@ -1296,4 +1371,175 @@ html.is-scroll-locked body {
 .table td:first-child {
   text-align: left;
   color: var(--text-dim);
+}
+
+/* --- Tema GTA VI: o que vai além das cores --------------------------- */
+
+/* Títulos em itálico pesado com o degradê do pôr do sol. Inline-block para o
+   degradê acompanhar a largura do texto, não a da tela; o respiro à direita
+   impede o corte da última letra inclinada. */
+[data-theme='gta6'] .header h1,
+[data-theme='gta6'] .card__title--lg {
+  display: inline-block;
+  max-width: 100%;
+  vertical-align: top;
+  padding-right: 0.15em;
+  font-style: italic;
+  font-weight: 800;
+  background: linear-gradient(90deg, #ff4fa3, #ff8a3d 65%, #ffc23d);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+
+[data-theme='gta6'] .card__title--lg {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Com degradê, a borda na cor sólida aparece como um contorno rosa sobre a
+   ponta laranja. Transparente, o degradê vai até a beirada. */
+[data-theme='gta6'] .btn--primary,
+[data-theme='gta6'] .check-btn.is-done {
+  border-color: transparent;
+}
+
+[data-theme='gta6'] .btn--primary:not(:disabled) {
+  box-shadow: 0 4px 18px rgba(255, 79, 163, 0.3);
+}
+
+[data-theme='gta6'] .progress__fill {
+  background: linear-gradient(90deg, #ff4fa3, #ff8a3d 70%, #ffc23d);
+}
+
+[data-theme='gta6'] .card--next {
+  box-shadow: 0 8px 32px rgba(255, 79, 163, 0.16);
+}
+
+/* Linhas de horizonte neon: o rosa do céu indo para o verde-água do mar. */
+[data-theme='gta6'] .header--bordered,
+[data-theme='gta6'] .tabbar {
+  border-image: linear-gradient(
+      90deg,
+      rgba(255, 79, 163, 0.65),
+      rgba(255, 138, 61, 0.65) 50%,
+      rgba(46, 230, 214, 0.65)
+    )
+    1;
+}
+
+[data-theme='gta6'] .tab.is-active svg {
+  filter: drop-shadow(0 0 6px rgba(255, 79, 163, 0.7));
+}
+
+/* --- Seletor de tema ------------------------------------------------- */
+
+.theme-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 10px;
+}
+
+/* Cada opção leva o próprio data-theme, então tudo aqui dentro — fundo, texto,
+   borda de selecionado — sai nas cores daquele tema. */
+.theme-option {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  min-width: 0;
+  padding: 8px 8px 10px;
+  text-align: left;
+  color: var(--text);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.theme-option:active {
+  transform: scale(0.98);
+}
+
+.theme-option.is-active {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 1px var(--accent);
+}
+
+/* Uma tela do app em miniatura: título, um card e o botão principal. */
+.theme-option__preview {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  height: 92px;
+  padding: 10px;
+  margin-bottom: 7px;
+  border-radius: var(--radius-sm);
+  background: var(--backdrop), var(--bg);
+  overflow: hidden;
+}
+
+.theme-option__title {
+  width: 55%;
+  height: 9px;
+  border-radius: 4px;
+  background: var(--text);
+}
+
+/* `.theme-option[...]` e não `[...] .theme-option__title`: com o app inteiro no
+   GTA VI, o <html> também casaria, e a prévia do padrão herdaria o degradê. */
+.theme-option[data-theme='gta6'] .theme-option__title {
+  background: linear-gradient(90deg, #ff4fa3, #ff8a3d 65%, #ffc23d);
+  transform: skewX(-12deg);
+}
+
+.theme-option__card {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px;
+  border-radius: 7px;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+}
+
+.theme-option__line {
+  flex: 1;
+  height: 6px;
+  border-radius: 3px;
+  background: var(--text-faint);
+}
+
+.theme-option__check {
+  width: 14px;
+  height: 14px;
+  border-radius: 4px;
+  background: var(--accent-fill);
+}
+
+.theme-option__button {
+  height: 14px;
+  border-radius: 5px;
+  background: var(--accent-fill);
+}
+
+.theme-option__name {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 15px;
+  font-weight: 700;
+}
+
+.theme-option__name svg {
+  width: 16px;
+  height: 16px;
+  color: var(--accent);
+}
+
+.theme-option__desc {
+  color: var(--text-dim);
+  font-size: 12px;
+  line-height: 1.3;
 }
