@@ -766,6 +766,23 @@ class TreinoDB extends Dexie {
             if (!exercise.prova && prova) exercise.prova = prova
           })
       })
+
+    // Provas novas do elenco do GTA VI (crucifixo, crossover, rosca com
+    // halteres). Liga só o exercício do catálogo inicial que ganhou prova
+    // agora — reaplicar a lista inteira religaria o que a pessoa desligou
+    // depois da v8.
+    this.version(9)
+      .stores({})
+      .upgrade(async (tx) => {
+        await tx
+          .table('exercises')
+          .toCollection()
+          .modify((exercise: Exercise) => {
+            if (!exercise.prova && exercise.name === 'Crucifixo na máquina') {
+              exercise.prova = 'crucifixo'
+            }
+          })
+      })
   }
 }
 

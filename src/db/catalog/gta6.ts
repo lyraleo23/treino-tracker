@@ -1,155 +1,148 @@
 import type { Character, CharacterLevel, ProvaId } from '../characters'
 
 /**
- * GTA VI — cargas observadas no jogo, tiradas do levantamento "GTA VI —
- * Exercícios e pesos encontrados" (versão inicial, nov/2026). Os valores ficam
- * em libras, como aparecem na tela; a conversão para kg acontece só na hora de
- * montar o personagem.
+ * GTA VI — cargas do levantamento "GTA VI — Exercícios e pesos encontrados",
+ * versão 5 (nov/2026), tiradas das capturas do jogo. Os valores ficam em kg
+ * exatamente como aparecem na tela (114,4; 154,4...), sem arredondar.
  *
- * Duas camadas:
- * - `JASON` / `LUCIA`: a referência sem nível, com tudo o que já foi visto.
- *   É o que a Arena usa enquanto nenhum nível tiver carga.
- * - `JASON_LEVELS` / `LUCIA_LEVELS`: a carga de cada Strength Level (1 a 4),
- *   a preencher conforme o levantamento separar os níveis. Basta UM nível
- *   com carga para o personagem passar a disputar por níveis — e a
- *   referência sai da Arena. Nível sem carga numa prova só não disputa ela.
+ * As cargas do menu de cada exercício SÃO os Strength Levels: a mais leve é a
+ * Força 1, a seguinte a Força 2, e assim por diante (confirmado pelo
+ * levantamento). O que importa é o peso: atual ou bloqueado é só o estado da
+ * carga no jogo, para quem jogava naquele momento, e não entra aqui.
  *
- * Não preencha nível por suposição: só com a carga vista naquele nível.
+ * Só entra o que está Confirmado nas capturas. O que ainda está Pendente fica
+ * anotado nos comentários e fora da Arena.
  */
 
-/** O critério de confiabilidade do levantamento. */
-type Confidence =
-  /** Personagem e carga aparecem claramente em gameplay ou captura. */
+/** O status da informação no levantamento. */
+type Status =
+  /** Exercício e carga aparecem claramente na captura. */
   | 'confirmado'
-  /** A carga aparece, mas não dá para atribuí-la com segurança ao personagem. */
-  | 'personagem-incerto'
+  /** Carga clara, mas o nome do exercício não aparece legível na captura. */
+  | 'associacao-provavel'
 
 interface Observation {
-  /** Todas as cargas vistas para o personagem neste exercício, em lb. */
-  lbs: number[]
   /**
-   * A carga que a Arena usa, em lb. Por enquanto a maior observada — é o
-   * número a corrigir quando a revisão separar cargas liberadas, atual e
-   * bloqueadas.
+   * As cargas do menu, em kg, da mais leve à mais pesada: a posição é o nível
+   * (a 1ª é a Força 1). Com menos cargas que níveis, os níveis de cima ficam
+   * sem esta prova.
    */
-  arena: number
-  confidence: Confidence
+  kg: number[]
+  status: Status
+  /** Exercício como o jogo chama, para conferir com o levantamento. */
+  game: string
   note?: string
 }
 
 type Sheet = Partial<Record<ProvaId, Observation>>
 
-/** A carga vista num nível: um número por exercício. */
-interface LevelObservation {
-  /** Em lb, como aparece na tela. */
-  lbs: number
-  confidence: Confidence
-  note?: string
-}
-
-type LevelSheet = Partial<Record<ProvaId, LevelObservation>>
-type Levels = Record<1 | 2 | 3 | 4, LevelSheet>
-
+/**
+ * Jason. A atribuição das capturas é provável — visualmente compatível com
+ * ele — até confirmação explícita.
+ */
 const JASON: Sheet = {
   supino: {
-    lbs: [135, 185, 225, 315],
-    arena: 315,
-    confidence: 'confirmado',
-    note: '225 e 315 também aparecem bloqueados em outra captura.',
+    game: 'Bench Press',
+    kg: [60, 80, 100, 140],
+    status: 'confirmado',
+  },
+  crucifixo: {
+    game: 'Chest Flys',
+    kg: [70, 85, 100, 115],
+    status: 'confirmado',
+  },
+  crossover: {
+    game: 'Cable Crossovers',
+    kg: [30, 40, 50, 60],
+    status: 'confirmado',
   },
   agachamento: {
-    lbs: [225, 255, 315, 355],
-    arena: 355,
-    confidence: 'confirmado',
-    note: 'Registros de situações de jogo diferentes.',
-  },
-  terra: {
-    lbs: [255, 305, 365, 415],
-    arena: 415,
-    confidence: 'confirmado',
-    note: '365 e 415 aparecem bloqueados em uma captura.',
-  },
-  kettlebell: {
-    lbs: [35, 62],
-    arena: 62,
-    confidence: 'confirmado',
-    note: 'Equipamento da casa.',
-  },
-  puxada: {
-    lbs: [160],
-    arena: 160,
-    confidence: 'personagem-incerto',
-    note: 'Gameplay atribuído ao Jason; a captura da máquina não mostra quem.',
+    game: 'Squats',
+    kg: [100, 114.4, 140, 154.4],
+    status: 'confirmado',
   },
   'leg-press': {
-    lbs: [450, 520],
-    arena: 520,
-    confidence: 'personagem-incerto',
-    note: 'Confirmar o personagem e se as duas opções são selecionáveis.',
+    game: 'Leg Press',
+    kg: [160, 200, 230, 280],
+    status: 'confirmado',
+  },
+  puxada: {
+    game: 'Lat Pulldowns',
+    kg: [70, 84, 98, 112],
+    status: 'confirmado',
   },
   'desenvolvimento-halteres': {
-    lbs: [80],
-    arena: 80,
-    confidence: 'personagem-incerto',
-    note: 'Por braço. Confirmar o personagem e se o valor é por halter.',
+    game: 'Shoulder Press',
+    kg: [22.6, 29.4, 36.2, 43],
+    status: 'confirmado',
+    note: 'Confirmar se é o mesmo exercício que Dumbbell Shoulder Press.',
   },
-  // Barra fixa e paralelas: peso corporal, sem carga — a Arena só compara
-  // carga e tempo por enquanto.
+  'rosca-halteres': {
+    game: 'Dumbbell Curls',
+    kg: [15.8, 18.1, 20.4, 29.4],
+    status: 'confirmado',
+  },
+  kettlebell: {
+    game: 'Kettlebell Swings',
+    kg: [12, 18, 24],
+    status: 'confirmado',
+    note:
+      'Três pesos exibidos, não quatro: entram como Força 1 a 3, e a Força 4 fica ' +
+      'sem kettlebell até o levantamento confirmar.',
+  },
+  // Pendentes: Deadlifts (cargas antigas sem confirmação visual), Pull-Ups e
+  // Dips (peso corporal), Leg Extensions, EZ Bar Curls, Treadmill e Exercise
+  // Bike.
 }
 
 const LUCIA: Sheet = {
-  puxada: {
-    lbs: [110, 130],
-    arena: 130,
-    confidence: 'confirmado',
-    note: '130 aparece como carga atual (CURRENT); 110 também é opção.',
+  supino: {
+    game: 'Bench Press',
+    kg: [30, 40, 54.4, 70],
+    status: 'confirmado',
   },
-  // Supino: só anilhas de 25 lb por lado numa imagem, sem o peso total da
-  // barra — não é carga máxima e fica de fora.
-  // Terra, agachamento, cadeira extensora e rosca com barra EZ: ela aparece
-  // fazendo, mas sem carga legível.
+  agachamento: {
+    game: 'Squats',
+    kg: [40, 54.4, 74.4, 90],
+    status: 'confirmado',
+  },
+  crucifixo: {
+    game: 'Chest Flys',
+    kg: [20, 30, 40, 50],
+    status: 'confirmado',
+  },
+  crossover: {
+    game: 'Cable Crossovers',
+    kg: [10, 20, 30, 40],
+    status: 'confirmado',
+  },
+  'rosca-halteres': {
+    game: 'Dumbbell Curls',
+    kg: [6.8, 9, 11.3, 13.6],
+    status: 'associacao-provavel',
+    note: 'Seleção de peso junto ao rack de halteres, sem o nome do exercício legível.',
+  },
+  'desenvolvimento-halteres': {
+    game: 'Dumbbell Shoulder Press',
+    kg: [6.8, 11.3, 15.8, 20.4],
+    status: 'associacao-provavel',
+    note: 'Seleção de peso junto ao rack de halteres, sem o nome do exercício legível.',
+  },
+  // Pendentes: Lat Pulldowns (110 / 130 lb do primeiro levantamento, sem
+  // confirmação visual), Deadlifts, EZ Bar Curls e Leg Extensions.
 }
 
-// Exemplo de preenchimento, quando a carga do nível for vista no jogo:
-//   2: { supino: { lbs: 185, confidence: 'confirmado' } },
-const JASON_LEVELS: Levels = { 1: {}, 2: {}, 3: {}, 4: {} }
-
-const LUCIA_LEVELS: Levels = { 1: {}, 2: {}, 3: {}, 4: {} }
-
-/**
- * Cargas vistas em menus de máquina da Vice Seven Gym, sem personagem. Ficam
- * registradas para a revisão, mas não entram em ninguém.
- */
-export const GTA6_UNASSIGNED = {
-  crossover: { available: [60, 80], locked: [100, 120] },
-  crucifixo: { available: [140, 170], locked: [200, 230] },
-} as const
-
-const LB_TO_KG = 0.45359237
-
-function lbToKg(lbs: number): number {
-  return Math.round(lbs * LB_TO_KG * 10) / 10
-}
-
-function toLoads(sheet: Sheet): CharacterLevel['loads'] {
-  const loads: CharacterLevel['loads'] = {}
+/** Um nível por posição na lista de cargas: a 1ª carga é a Força 1. */
+function toLevels(sheet: Sheet): CharacterLevel[] {
+  const levels: CharacterLevel[] = []
   for (const [prova, observation] of Object.entries(sheet) as [ProvaId, Observation][]) {
-    loads[prova] = lbToKg(observation.arena)
+    const ordered = [...observation.kg].sort((a, b) => a - b)
+    ordered.forEach((kg, index) => {
+      levels[index] ??= { level: index + 1, loads: {} }
+      levels[index].loads[prova] = kg
+    })
   }
-  return loads
-}
-
-function toLevels(levels: Levels): CharacterLevel[] {
-  return Object.entries(levels).map(([level, sheet]) => {
-    const loads: CharacterLevel['loads'] = {}
-    for (const [prova, observation] of Object.entries(sheet) as [
-      ProvaId,
-      LevelObservation,
-    ][]) {
-      loads[prova] = lbToKg(observation.lbs)
-    }
-    return { level: Number(level), loads }
-  })
+  return levels
 }
 
 export const GTA6_CHARACTERS: Character[] = [
@@ -160,17 +153,15 @@ export const GTA6_CHARACTERS: Character[] = [
     feat: 'Treina na Ajax Gym, em Vice City.',
     provisional: true,
     levelLabel: 'Força',
-    levels: toLevels(LUCIA_LEVELS),
-    loads: toLoads(LUCIA),
+    levels: toLevels(LUCIA),
   },
   {
     id: 'gta6-jason',
     name: 'Jason Duval',
     game: 'GTA VI',
-    feat: 'Supino, agachamento e terra na varanda de casa, em Key Lento.',
+    feat: 'Treina na varanda de casa, em Key Lento.',
     provisional: true,
     levelLabel: 'Força',
-    levels: toLevels(JASON_LEVELS),
-    loads: toLoads(JASON),
+    levels: toLevels(JASON),
   },
 ]

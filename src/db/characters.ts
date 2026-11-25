@@ -21,6 +21,8 @@ export type ProvaUnit = 'kg' | 's'
  */
 export const PROVAS = [
   { id: 'supino', name: 'Supino', unit: 'kg', inPhrase: 'no supino' },
+  { id: 'crucifixo', name: 'Crucifixo', unit: 'kg', inPhrase: 'no crucifixo' },
+  { id: 'crossover', name: 'Crossover na polia', unit: 'kg', inPhrase: 'no crossover' },
   { id: 'agachamento', name: 'Agachamento', unit: 'kg', inPhrase: 'no agachamento' },
   { id: 'terra', name: 'Levantamento terra', unit: 'kg', inPhrase: 'no levantamento terra' },
   { id: 'leg-press', name: 'Leg press', unit: 'kg', inPhrase: 'no leg press' },
@@ -36,6 +38,12 @@ export const PROVAS = [
   { id: 'puxada', name: 'Puxada', unit: 'kg', inPhrase: 'na puxada' },
   { id: 'remada', name: 'Remada', unit: 'kg', inPhrase: 'na remada' },
   { id: 'rosca', name: 'Rosca', unit: 'kg', inPhrase: 'na rosca' },
+  {
+    id: 'rosca-halteres',
+    name: 'Rosca com halteres (por mão)',
+    unit: 'kg',
+    inPhrase: 'na rosca com halteres',
+  },
   { id: 'triceps', name: 'Tríceps', unit: 'kg', inPhrase: 'no tríceps' },
   { id: 'extensora', name: 'Cadeira extensora', unit: 'kg', inPhrase: 'na cadeira extensora' },
   { id: 'flexora', name: 'Mesa flexora', unit: 'kg', inPhrase: 'na mesa flexora' },
@@ -60,11 +68,16 @@ export function getProva(id: string | undefined): Prova | undefined {
 /**
  * Exercícios do catálogo inicial que já nascem ligados a uma prova. Só os
  * casos sem dúvida. Com halteres a carga costuma ser anotada por mão: o
- * desenvolvimento tem prova própria por mão; supino inclinado e rosca martelo
- * não têm, e ficam para a pessoa ligar se quiser.
+ * desenvolvimento tem prova própria por mão. A rosca martelo fica de fora —
+ * a rosca com halteres do jogo é outro movimento — e o supino inclinado
+ * também; a pessoa liga se quiser.
+ *
+ * Quem já usa o app recebe as ligações novas por migração (db.ts): esta lista
+ * só vale para instalação nova.
  */
 export const PROVA_BY_SEED_NAME: Record<string, ProvaId> = {
   'Supino reto': 'supino',
+  'Crucifixo na máquina': 'crucifixo',
   'Agachamento livre': 'agachamento',
   'Leg press': 'leg-press',
   'Puxada frontal': 'puxada',
