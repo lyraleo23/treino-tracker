@@ -2,6 +2,7 @@ import Dexie from 'dexie'
 import {
   clampSessionsToIncrease,
   db,
+  type ArenaSettings,
   DEFAULT_HYDRATION,
   DEFAULT_LADDER_RATIOS,
   DEFAULT_NUTRITION,
@@ -306,6 +307,16 @@ export async function saveProgressionSettings(
     progression: {
       sessionsToIncrease: clampSessionsToIncrease(progression.sessionsToIncrease),
     },
+  })
+}
+
+export async function saveArenaSettings(arena: ArenaSettings): Promise<void> {
+  const current = await db.settings.get('app')
+  await db.settings.put({
+    ...current,
+    id: 'app',
+    ladder: current?.ladder ?? DEFAULT_LADDER_RATIOS,
+    arena,
   })
 }
 

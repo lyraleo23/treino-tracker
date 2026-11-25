@@ -191,6 +191,20 @@ export const CHARACTERS: Character[] = [...GTA6_CHARACTERS]
 /** Todos os degraus da Arena, de todos os personagens. */
 export const RUNGS: Rung[] = CHARACTERS.flatMap(rungsOf)
 
+/**
+ * Provas que pelo menos um personagem disputa. As outras podem ficar
+ * escondidas nas telas (Ajustes → Arena); os exercícios ligados a elas não
+ * mudam, e elas voltam sozinhas quando um personagem ganhar carga nelas.
+ */
+export const DISPUTED_PROVAS: ReadonlySet<ProvaId> = new Set(
+  RUNGS.flatMap((rung) => Object.keys(rung.loads) as ProvaId[]),
+)
+
+/** A prova aparece nas telas com a opção atual de Ajustes? */
+export function isProvaVisible(prova: ProvaId, showUndisputed: boolean): boolean {
+  return showUndisputed || DISPUTED_PROVAS.has(prova)
+}
+
 export function getCharacter(id: string | undefined): Character | undefined {
   return CHARACTERS.find((character) => character.id === id)
 }

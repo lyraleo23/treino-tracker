@@ -15,7 +15,8 @@ import {
   setExercisePhoto,
   updateExercise,
 } from '../db/actions'
-import { PROVAS, type ProvaId } from '../db/characters'
+import { isProvaVisible, PROVAS, type ProvaId } from '../db/characters'
+import { getArenaSettings } from '../db/queries'
 import { useObjectUrl } from '../hooks/useObjectUrl'
 import { CARDIO_LABELS, formatNumber, normalizeSearchText } from '../lib/format'
 import { newId } from '../lib/id'
@@ -151,6 +152,16 @@ export function ExerciseFormModal({ exercise, initialName, onClose, onSaved }: P
   const provaOptions = PROVAS.filter((option) => option.unit === (kind === 'time' ? 's' : 'kg'))
   const provaToSave =
     kind !== 'cardio' && provaOptions.some((option) => option.id === prova) ? prova : undefined
+
+  // Ajustes → Arena pode esconder as provas sem personagem. A prova que o
+  // exercício já tem aparece mesmo assim: escondida, o chip sumiria e salvar o
+  // formulário por outro motivo apagaria a ligação.
+  const arenaSettings = useLiveQuery(getArenaSettings, [])
+  const showUndisputed = arenaSettings?.showUndisputedProvas ?? false
+  const visibleProvaOptions = provaOptions.filter(
+    (option) => isProvaVisible(option.id, showUndisputed) || option.id === exercise?.prova,
+  )
+  const hiddenProvas = provaOptions.length - visibleProvaOptions.length
 
   const urlOk = isSafeUrl(videoUrl)
   const canSave = name.trim().length > 0 && urlOk
@@ -448,7 +459,7 @@ export function ExerciseFormModal({ exercise, initialName, onClose, onSaved }: P
                 >
                   Nenhuma
                 </button>
-                {provaOptions.map((option) => (
+                {visibleProvaOptions.map((option) => (
                   <button
                     key={option.id}
                     type="button"
@@ -463,6 +474,8 @@ export function ExerciseFormModal({ exercise, initialName, onClose, onSaved }: P
               <span className="hint">
                 Com qual movimento este exercício disputa contra os personagens. Duas
                 máquinas podem ter a mesma prova — na média da Arena vale a melhor.
+                {hiddenProvas > 0 &&
+                  ' Provas que nenhum personagem disputa estão ocultas (Ajustes → Arena).'}
               </span>
             </div>
           )}
