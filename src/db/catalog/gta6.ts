@@ -5,21 +5,14 @@ import type { Character, CharacterLevel, ProvaId } from '../characters'
  * versão 5 (nov/2026), tiradas das capturas do jogo. Os valores ficam em kg
  * exatamente como aparecem na tela (114,4; 154,4...), sem arredondar.
  *
- * Regras do levantamento que valem aqui:
- * - Só entra o que está Confirmado nas capturas. O que ainda está Pendente
- *   fica anotado nos comentários e fora da Arena.
- * - Carga bloqueada continua sendo carga da progressão: fica indisponível só
- *   enquanto o personagem não tem Strength suficiente. Por isso a referência
- *   da Arena é a maior carga exibida, bloqueada ou não.
- * - Nada de associar carga a Strength Level sem validar no jogo.
+ * As cargas do menu de cada exercício SÃO os Strength Levels: a mais leve é a
+ * Força 1, a seguinte a Força 2, e assim por diante (confirmado pelo
+ * levantamento). As capturas batem com isso: o CURRENT do Jason é sempre a 3ª
+ * carga — ele joga na Força 3 — e o da Lucia, a 4ª. Carga bloqueada continua
+ * sendo carga da progressão: é o nível que o personagem ainda não tem.
  *
- * Duas camadas:
- * - `JASON` / `LUCIA`: a referência sem nível, com tudo o que foi exibido.
- *   É o que a Arena usa enquanto nenhum nível tiver carga.
- * - `JASON_LEVELS` / `LUCIA_LEVELS`: a carga de cada Strength Level (1 a 4),
- *   a preencher quando o mapeamento for validado. Basta UM nível com carga
- *   para o personagem passar a disputar por níveis — e a referência sai da
- *   Arena. Nível sem carga numa prova só não disputa ela.
+ * Só entra o que está Confirmado nas capturas. O que ainda está Pendente fica
+ * anotado nos comentários e fora da Arena.
  */
 
 /** O status da informação no levantamento. */
@@ -30,7 +23,11 @@ type Status =
   | 'associacao-provavel'
 
 interface Observation {
-  /** Todas as cargas exibidas no menu, em kg, da mais leve à mais pesada. */
+  /**
+   * As cargas do menu, em kg, da mais leve à mais pesada: a posição é o nível
+   * (a 1ª é a Força 1). Com menos cargas que níveis, os níveis de cima ficam
+   * sem esta prova.
+   */
   kg: number[]
   /** A marcada como CURRENT na captura. */
   current?: number
@@ -40,21 +37,9 @@ interface Observation {
   /** Exercício como o jogo chama, para conferir com o levantamento. */
   game: string
   note?: string
-  /** Força outra carga para a Arena. Ausente, vale a maior de `kg`. */
-  arena?: number
 }
 
 type Sheet = Partial<Record<ProvaId, Observation>>
-
-/** A carga de um nível, quando o mapeamento existir: um número por exercício. */
-interface LevelObservation {
-  kg: number
-  status: Status
-  note?: string
-}
-
-type LevelSheet = Partial<Record<ProvaId, LevelObservation>>
-type Levels = Record<1 | 2 | 3 | 4, LevelSheet>
 
 /**
  * Jason. A atribuição das capturas é provável — visualmente compatível com
@@ -125,7 +110,9 @@ const JASON: Sheet = {
     game: 'Kettlebell Swings',
     kg: [12, 18, 24],
     status: 'confirmado',
-    note: 'Três pesos exibidos.',
+    note:
+      'Três pesos exibidos, não quatro: entram como Força 1 a 3, e a Força 4 fica ' +
+      'sem kettlebell até o levantamento confirmar.',
   },
   // Pendentes: Deadlifts (cargas antigas sem confirmação visual), Pull-Ups e
   // Dips (peso corporal), Leg Extensions, EZ Bar Curls, Treadmill e Exercise
@@ -175,31 +162,17 @@ const LUCIA: Sheet = {
   // confirmação visual), Deadlifts, EZ Bar Curls e Leg Extensions.
 }
 
-// Exemplo de preenchimento, quando o mapeamento for validado no jogo:
-//   2: { supino: { kg: 80, status: 'confirmado' } },
-const JASON_LEVELS: Levels = { 1: {}, 2: {}, 3: {}, 4: {} }
-
-const LUCIA_LEVELS: Levels = { 1: {}, 2: {}, 3: {}, 4: {} }
-
-function toLoads(sheet: Sheet): CharacterLevel['loads'] {
-  const loads: CharacterLevel['loads'] = {}
+/** Um nível por posição na lista de cargas: a 1ª carga é a Força 1. */
+function toLevels(sheet: Sheet): CharacterLevel[] {
+  const levels: CharacterLevel[] = []
   for (const [prova, observation] of Object.entries(sheet) as [ProvaId, Observation][]) {
-    loads[prova] = observation.arena ?? Math.max(...observation.kg)
+    const ordered = [...observation.kg].sort((a, b) => a - b)
+    ordered.forEach((kg, index) => {
+      levels[index] ??= { level: index + 1, loads: {} }
+      levels[index].loads[prova] = kg
+    })
   }
-  return loads
-}
-
-function toLevels(levels: Levels): CharacterLevel[] {
-  return Object.entries(levels).map(([level, sheet]) => {
-    const loads: CharacterLevel['loads'] = {}
-    for (const [prova, observation] of Object.entries(sheet) as [
-      ProvaId,
-      LevelObservation,
-    ][]) {
-      loads[prova] = observation.kg
-    }
-    return { level: Number(level), loads }
-  })
+  return levels
 }
 
 export const GTA6_CHARACTERS: Character[] = [
@@ -210,8 +183,7 @@ export const GTA6_CHARACTERS: Character[] = [
     feat: 'Treina na Ajax Gym, em Vice City.',
     provisional: true,
     levelLabel: 'Força',
-    levels: toLevels(LUCIA_LEVELS),
-    loads: toLoads(LUCIA),
+    levels: toLevels(LUCIA),
   },
   {
     id: 'gta6-jason',
@@ -220,7 +192,6 @@ export const GTA6_CHARACTERS: Character[] = [
     feat: 'Treina na varanda de casa, em Key Lento.',
     provisional: true,
     levelLabel: 'Força',
-    levels: toLevels(JASON_LEVELS),
-    loads: toLoads(JASON),
+    levels: toLevels(JASON),
   },
 ]
