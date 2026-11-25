@@ -5,7 +5,9 @@ import {
   DEFAULT_HYDRATION,
   DEFAULT_LADDER_RATIOS,
   DEFAULT_NUTRITION,
+  DEFAULT_ARENA,
   DEFAULT_PROGRESSION,
+  type ArenaSettings,
   type DrinkLog,
   type LadderRatios,
   type MealLog,
@@ -535,6 +537,11 @@ export async function getProgressionSettings(): Promise<ProgressionSettings> {
       saved?.sessionsToIncrease ?? DEFAULT_PROGRESSION.sessionsToIncrease,
     ),
   }
+}
+
+/** Opções da Arena; sem configuração salva, o padrão (provas sem personagem escondidas). */
+export async function getArenaSettings(): Promise<ArenaSettings> {
+  return { ...DEFAULT_ARENA, ...(await db.settings.get('app'))?.arena }
 }
 
 // --- Hidratação ---------------------------------------------------------

@@ -79,7 +79,10 @@ sem backend e sem cadastro. Todos os dados ficam no próprio aparelho (IndexedDB
     próprias cargas e vira um degrau da Arena — "Disputando com Jason Duval · Força
     3", "Você é Lucia Caminos · Força 2". O primeiro elenco é o do **GTA VI** — Jason
     e Lucia, Força 1 a 4 —, com as cargas das capturas do jogo: em cada exercício, a
-    carga mais leve do menu é a Força 1 e a mais pesada, a Força 4. A foto é escolhida no
+    carga mais leve do menu é a Força 1 e a mais pesada, a Força 4.
+  - **Provas sem personagem** (remada, prancha...) ficam ocultas por padrão; em
+    *Ajustes → Arena* dá para mostrá-las. Ocultar não mexe nos exercícios: eles
+    continuam ligados à prova, que volta sozinha quando um personagem a disputar. A foto é escolhida no
     celular, na página do personagem, e vai no backup junto com as fotos dos
     exercícios. Imagens que puderem ser publicadas também podem vir com o app, em
     `public/personagens/` — o repositório é público.

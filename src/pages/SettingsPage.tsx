@@ -2,8 +2,9 @@ import { useRef, useState } from 'react'
 import { useLiveQuery } from 'dexie-react-hooks'
 import { db, DEFAULT_LADDER_RATIOS, MAX_SESSIONS_TO_INCREASE } from '../db/db'
 import { exportBackup, importBackup, mergeBackup, wipeAll, type ImportMode } from '../db/backup'
-import { saveLadderRatios, saveProgressionSettings } from '../db/actions'
-import { getLadderRatios, getProgressionSettings } from '../db/queries'
+import { saveArenaSettings, saveLadderRatios, saveProgressionSettings } from '../db/actions'
+import { getArenaSettings, getLadderRatios, getProgressionSettings } from '../db/queries'
+import { DISPUTED_PROVAS, PROVAS } from '../db/characters'
 import { seedIfEmpty } from '../db/seed'
 import { PageHeader } from '../components/PageHeader'
 import { ConfirmDialog } from '../components/Modal'
@@ -57,6 +58,9 @@ export function SettingsPage() {
 
   const savedRatios = useLiveQuery(getLadderRatios, [])
   const progression = useLiveQuery(getProgressionSettings, [])
+  const arenaSettings = useLiveQuery(getArenaSettings, [])
+  const showUndisputed = arenaSettings?.showUndisputedProvas ?? false
+  const undisputed = PROVAS.filter((prova) => !DISPUTED_PROVAS.has(prova.id))
   const sessionsToIncrease = progression?.sessionsToIncrease ?? 1
 
   // A razão é guardada como 0,85; a tela fala em 85%. A conversão vive só aqui.
@@ -299,6 +303,35 @@ export function SettingsPage() {
           </button>
           <button type="button" className="btn" onClick={() => void handleResetRatios()}>
             Voltar ao padrão
+          </button>
+        </div>
+
+        <h2 className="section-title">Arena</h2>
+        <p className="hint" style={{ marginTop: 0 }}>
+          {undisputed.length > 0
+            ? `Algumas provas ainda não têm nenhum personagem: ${undisputed
+                .map((prova) => prova.name.toLowerCase())
+                .join(', ')}.`
+            : 'Todas as provas têm pelo menos um personagem.'}{' '}
+          Ocultas, elas saem da aba Arena, do seletor de prova e da tela do exercício.
+          Seus treinos e exercícios não mudam, e cada prova volta sozinha quando um
+          personagem passar a disputá-la.
+        </p>
+        {/* Grava no toque, como o seletor de sessões. */}
+        <div className="segmented">
+          <button
+            type="button"
+            aria-pressed={!showUndisputed}
+            onClick={() => void saveArenaSettings({ showUndisputedProvas: false })}
+          >
+            Ocultar
+          </button>
+          <button
+            type="button"
+            aria-pressed={showUndisputed}
+            onClick={() => void saveArenaSettings({ showUndisputedProvas: true })}
+          >
+            Mostrar
           </button>
         </div>
 

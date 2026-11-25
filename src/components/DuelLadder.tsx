@@ -2,7 +2,8 @@ import { useNavigate } from 'react-router-dom'
 import { useLiveQuery } from 'dexie-react-hooks'
 import type { Exercise } from '../db/db'
 import { getExerciseDuel } from '../db/arena'
-import { levelName, type Rung } from '../db/characters'
+import { isProvaVisible, levelName, PROVAS, type Rung } from '../db/characters'
+import { getArenaSettings } from '../db/queries'
 import {
   formatMark,
   loadOf,
@@ -24,11 +25,20 @@ interface Props {
 export function DuelLadder({ exercise }: Props) {
   const navigate = useNavigate()
   const result = useLiveQuery(() => getExerciseDuel(exercise.id), [exercise.id, exercise.prova])
+  const settings = useLiveQuery(getArenaSettings, [])
 
   // Aeróbico não tem prova; sem prova ligada, só o convite para ligar.
-  if (exercise.kind === 'cardio' || result === undefined) return null
+  if (exercise.kind === 'cardio' || result === undefined || !settings) return null
+  const show = settings.showUndisputedProvas
 
   if (result === null) {
+    // Convidar a ligar só faz sentido se houver prova visível para este tipo
+    // de exercício — com tempo, por exemplo, hoje só existe a prancha.
+    const unit = exercise.kind === 'time' ? 's' : 'kg'
+    const hasVisibleProva = PROVAS.some(
+      (prova) => prova.unit === unit && isProvaVisible(prova.id, show),
+    )
+    if (!hasVisibleProva) return null
     return (
       <>
         <h2 className="section-title">Arena</h2>
@@ -42,6 +52,8 @@ export function DuelLadder({ exercise }: Props) {
 
   const { prova, mark, duel, beatenAt } = result
   const contenders = duel.beaten.length + duel.ahead.length
+  // Prova sem personagem: a seção só diria "ninguém disputa".
+  if (contenders === 0 && !show) return null
 
   const row = (rung: Rung, beaten: boolean) => {
     const level = levelName(rung)

@@ -59,6 +59,17 @@ export interface ProgressionSettings {
 
 export const DEFAULT_PROGRESSION: ProgressionSettings = { sessionsToIncrease: 1 }
 
+export interface ArenaSettings {
+  /**
+   * Mostra também as provas que nenhum personagem disputa (remada, prancha...)
+   * na aba Arena, no seletor do exercício e na tela do exercício. Escondidas,
+   * os exercícios continuam ligados a elas — só a tela deixa de listá-las.
+   */
+  showUndisputedProvas: boolean
+}
+
+export const DEFAULT_ARENA: ArenaSettings = { showUndisputedProvas: false }
+
 /** Teto do seletor: cinco sessões seguidas já é conservador o bastante. */
 export const MAX_SESSIONS_TO_INCREASE = 5
 
@@ -141,6 +152,8 @@ export interface Settings {
   hydration?: HydrationSettings
   /** Ausente na linha gravada antes da nutrição existir. */
   nutrition?: NutritionSettings
+  /** Ausente na linha gravada antes da opção da Arena existir. */
+  arena?: ArenaSettings
 }
 
 /**

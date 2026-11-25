@@ -1,7 +1,8 @@
 import { useNavigate } from 'react-router-dom'
 import { useLiveQuery } from 'dexie-react-hooks'
 import { getArena } from '../db/arena'
-import { CHARACTERS, levelName, rungName, type Rung } from '../db/characters'
+import { CHARACTERS, isProvaVisible, levelName, rungName, type Rung } from '../db/characters'
+import { getArenaSettings } from '../db/queries'
 import {
   formatMark,
   formatRatio,
@@ -60,13 +61,19 @@ function summaryText(summary: CharacterSummary): { meta: string; value: string; 
 export function ArenaPage() {
   const navigate = useNavigate()
   const arena = useLiveQuery(getArena, [])
+  const settings = useLiveQuery(getArenaSettings, [])
 
   const header = (
     <PageHeader title="Arena" subtitle={`Últimos ${STRENGTH_WINDOW_DAYS} dias`} />
   )
-  if (!arena) return header
+  if (!arena || !settings) return header
 
-  const { marks, standing } = arena
+  const { standing } = arena
+  // Provas que nenhum personagem disputa só aparecem se Ajustes → Arena pedir.
+  const marks = arena.marks.filter((item) =>
+    isProvaVisible(item.prova.id, settings.showUndisputedProvas),
+  )
+  const hiddenMarks = arena.marks.length - marks.length
   const { you, next } = standing
   const openRung = (rung: Rung) =>
     navigate(`/arena/${rung.character.id}`, { state: { level: rung.level } })
@@ -213,8 +220,9 @@ export function ArenaPage() {
         <h2 className="section-title">Suas marcas</h2>
         {marks.length === 0 ? (
           <p className="hint" style={{ marginTop: 0 }}>
-            Nenhum exercício ligado a uma prova. Em <strong>Exercícios</strong>, abra um
-            exercício e toque em <strong>Editar → Prova da Arena</strong>.
+            Nenhum exercício ligado a uma prova que os personagens disputam. Em{' '}
+            <strong>Exercícios</strong>, abra um exercício e toque em{' '}
+            <strong>Editar → Prova da Arena</strong>.
           </p>
         ) : (
           <>
@@ -256,6 +264,14 @@ export function ArenaPage() {
               melhor.
             </p>
           </>
+        )}
+        {hiddenMarks > 0 && (
+          <p className="hint">
+            {hiddenMarks === 1
+              ? '1 prova sem personagem está oculta'
+              : `${hiddenMarks} provas sem personagem estão ocultas`}{' '}
+            — dá para mostrar em Ajustes → Arena.
+          </p>
         )}
       </div>
     </>
