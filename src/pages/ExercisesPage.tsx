@@ -125,6 +125,10 @@ export function ExercisesPage() {
                     <div className="list__name">{exercise.name}</div>
                     <div className="list__meta">
                       {KIND_LABELS[exercise.kind]}
+                      {/* "Barra, Halteres": o mesmo exercício em mais de um equipamento. */}
+                      {exercise.variants?.length
+                        ? ` · ${exercise.variants.map((variant) => variant.name).join(', ')}`
+                        : ''}
                     </div>
                   </div>
                   <span className="chevron">›</span>

@@ -10,6 +10,7 @@ import {
   type CardioField,
   type Exercise,
   type NextLoad,
+  type SessionSwap,
   type SetBlock,
   type SetLog,
   type WorkoutItem,
@@ -20,17 +21,26 @@ import {
   finishSession,
   saveSetLog,
   setItemSkipped,
+  setItemSwap,
   updateSetBlock,
 } from '../db/actions'
 import {
   getHistoryForBlocks,
   getLadderRatios,
-  getLastSetsForExercises,
-  getPreviousExecutions,
+  getLastSetsFor,
+  getPreviousExecutionsFor,
   getProgressionSettings,
   getProgressionSuggestion,
   type ProgressionSuggestion,
 } from '../db/queries'
+import {
+  canSwap,
+  defaultVariantId,
+  exerciseLabel,
+  historyFilter,
+  historyKey,
+  resolveVariantId,
+} from '../lib/variants'
 import {
   autoDecreaseFloor,
   blockRole,
@@ -49,6 +59,7 @@ import { ExercisePhoto } from '../components/ExercisePhoto'
 import { SetBlockModal } from '../components/SetBlockModal'
 import { SuggestionBanner } from '../components/SuggestionBanner'
 import { RivalLine } from '../components/RivalLine'
+import { SwapModal } from '../components/SwapModal'
 import {
   ArrowDownIcon,
   ArrowUpIcon,
@@ -57,6 +68,7 @@ import {
   NoteIcon,
   PlusIcon,
   SkipIcon,
+  SwapIcon,
   TrashIcon,
   VideoIcon,
 } from '../components/icons'
@@ -81,7 +93,19 @@ type Drafts = Record<string, Draft>
 
 interface Row {
   item: WorkoutItem
+  /** O exercício do treino, e a forma com que o treino o faz. */
+  planned: Exercise
+  plannedVariantId?: string
+  /**
+   * O que se faz hoje: o planejado, ou o que entrou numa troca temporária. É
+   * dele o nome, a foto, o vídeo e o histórico que pré-preenche a tela.
+   */
   exercise: Exercise
+  variantId?: string
+  /** Trocado só nesta sessão: sem sugestão de carga nem marcas ↑↓. */
+  swapped: boolean
+  /** Exercício + forma de hoje; chave dos mapas de histórico. */
+  key: string
   blocks: SetBlock[]
 }
 
@@ -178,6 +202,8 @@ export function SessionPage() {
     block: SetBlock
     exercise: Exercise
   } | null>(null)
+  /** Exercício cuja troca temporária está aberta, pelo `workoutItemId`. */
+  const [swappingItemId, setSwappingItemId] = useState<string | null>(null)
 
   // Alvos da rolagem automática.
   const blockRefs = useRef<Record<string, HTMLDivElement | null>>({})
@@ -193,14 +219,34 @@ export function SessionPage() {
       .between([session.workoutId, Dexie.minKey], [session.workoutId, Dexie.maxKey])
       .toArray()
 
-    const exercises = await db.exercises.bulkGet(items.map((i) => i.exerciseId))
+    // O catálogo inteiro, e não só os do treino: a troca temporária precisa
+    // dos equivalentes, que podem não estar em treino nenhum.
+    const exercises = await db.exercises.toArray()
+    const exerciseById = new Map(exercises.map((exercise) => [exercise.id, exercise]))
+
     const rows: Row[] = []
-    for (const [index, item] of items.entries()) {
-      const exercise = exercises[index]
-      if (!exercise) continue
+    for (const item of items) {
+      const planned = exerciseById.get(item.exerciseId)
+      if (!planned) continue
+      const plannedVariantId = resolveVariantId(planned, item.variantId)
+
+      // Troca para um exercício que sumiu do catálogo não tem o que mostrar: a
+      // linha volta ao planejado em vez de desaparecer.
+      const swap = session.swaps?.[item.id]
+      const swapExercise = swap ? exerciseById.get(swap.exerciseId) : undefined
+      const exercise = swapExercise ?? planned
+      const variantId = swapExercise
+        ? resolveVariantId(swapExercise, swap?.variantId)
+        : plannedVariantId
+
       rows.push({
         item,
+        planned,
+        plannedVariantId,
         exercise,
+        variantId,
+        swapped: exercise.id !== planned.id || variantId !== plannedVariantId,
+        key: historyKey(exercise.id, variantId),
         blocks: await db.setBlocks
           .where('[workoutItemId+order]')
           .between([item.id, Dexie.minKey], [item.id, Dexie.maxKey])
@@ -209,47 +255,60 @@ export function SessionPage() {
     }
 
     const logs = await db.setLogs.where('sessionId').equals(sessionId).toArray()
-    const allBlocks = rows.flatMap((row) => row.blocks)
 
-    const exerciseIds = [...new Set(rows.map((row) => row.item.exerciseId))]
+    // O histórico é de exercício + forma: o supino na barra não pré-preenche o
+    // supino nos halteres. Numa troca, vale o histórico de quem entrou.
+    const targets = rows.map((row) => ({
+      key: row.key,
+      exerciseId: row.exercise.id,
+      filter: historyFilter(row.exercise, row.variantId),
+    }))
 
     // A execução mais recente do exercício em qualquer treino é quem manda no
     // preenchimento; as duas consultas abaixo cobrem o que ela não alcança —
     // um bloco que só existe neste treino, um exercício estreando aqui.
-    const previousByExercise = await getPreviousExecutions(
-      exerciseIds,
-      session.workoutId,
-      sessionId,
-    )
+    const previousByKey = await getPreviousExecutionsFor(targets, session.workoutId, sessionId)
     const lastByBlock = await getHistoryForBlocks(
-      allBlocks.map((block) => block.id),
+      rows.flatMap((row) =>
+        row.blocks.map((block) => ({
+          key: `${block.id}|${row.key}`,
+          blockId: block.id,
+          filter: historyFilter(row.exercise, row.variantId),
+        })),
+      ),
       sessionId,
     )
-    const lastByExercise = await getLastSetsForExercises(exerciseIds, sessionId)
+    const lastByKey = await getLastSetsFor(targets, sessionId)
 
     // A regra de progressão é a mesma para todos os exercícios: lida uma vez só,
     // fora do laço.
     const progression = await getProgressionSettings()
 
+    // Por linha, e não por exercício: o mesmo supino pode estar no treino com
+    // barra e com halteres, cada um com a sua carga. Troca temporária não ganha
+    // sugestão — é para não ficar sem treinar, não para medir evolução.
     const suggestions = new Map<string, ProgressionSuggestion>()
     for (const row of rows) {
+      if (row.swapped) continue
       const suggestion = await getProgressionSuggestion(
-        row.item.exerciseId,
+        row.exercise.id,
         row.blocks,
         session.workoutId,
         sessionId,
         progression,
+        historyFilter(row.exercise, row.variantId),
       )
-      if (suggestion) suggestions.set(row.item.exerciseId, suggestion)
+      if (suggestion) suggestions.set(row.item.id, suggestion)
     }
 
     return {
       session,
       rows,
       logs,
-      previousByExercise,
+      exercises,
+      previousByKey,
       lastByBlock,
-      lastByExercise,
+      lastByKey,
       suggestions,
       ratios: await getLadderRatios(),
     }
@@ -339,14 +398,16 @@ export function SessionPage() {
     session,
     rows,
     logs,
-    previousByExercise,
+    exercises,
+    previousByKey,
     lastByBlock,
-    lastByExercise,
+    lastByKey,
     suggestions,
     ratios,
   } = data
 
   const isRowSkipped = (row: Row) => skipped.has(row.item.id)
+  const swappingRow = rows.find((row) => row.item.id === swappingItemId)
 
   const totalPlanned = rows
     .filter((row) => !isRowSkipped(row))
@@ -403,6 +464,35 @@ export function SessionPage() {
     setOpenNotes(without)
     setMarks(without)
     setExtraSets((current) => ({ ...current, [block.id]: index - block.sets }))
+  }
+
+  /**
+   * Troca (ou desfaz a troca) só nesta sessão. O que foi digitado e ainda não
+   * concluído sai junto: era a carga do planejado, e o campo precisa voltar com
+   * o histórico de quem entra. As séries concluídas ficam como foram feitas.
+   */
+  function changeSwap(row: Row, swap: SessionSwap | null) {
+    const pending = new Set(
+      row.blocks.flatMap((block) =>
+        Array.from({ length: setCountOf(block) }, (_, index) => index)
+          .filter(
+            (index) =>
+              !logs.some((log) => log.blockId === block.id && log.setIndex === index),
+          )
+          .map((index) => rowKey(block.id, index)),
+      ),
+    )
+    const without = <T,>(record: Record<string, T>) =>
+      Object.fromEntries(Object.entries(record).filter(([key]) => !pending.has(key)))
+
+    setDrafts(without)
+    setMarks(without)
+    setOutcomes((current) => {
+      const next = { ...current }
+      delete next[row.item.id]
+      return next
+    })
+    void setItemSwap(session.id, row.item.id, swap)
   }
 
   /** Pular é decisão de percurso, não exclusão: o que já foi feito continua. */
@@ -489,17 +579,18 @@ export function SessionPage() {
       }
       return next
     })
-    setOutcomes((current) => ({ ...current, [row.item.exerciseId]: 'aplicada' }))
+    setOutcomes((current) => ({ ...current, [row.item.id]: 'aplicada' }))
   }
 
   /**
    * As marcas manuais de subir ou diminuir valem quando não há sugestão
    * automática ou quando ela foi dispensada. A automática tem prioridade: enquanto está na
-   * tela, as marcas esperam; aplicada, quem manda são as cargas dela.
+   * tela, as marcas esperam; aplicada, quem manda são as cargas dela. Numa
+   * troca temporária não valem: ela não mexe em carga.
    */
   const marksApply = (row: Row) =>
-    !suggestions.has(row.item.exerciseId) ||
-    outcomes[row.item.exerciseId] === 'dispensada'
+    !row.swapped &&
+    (!suggestions.has(row.item.id) || outcomes[row.item.id] === 'dispensada')
 
   /**
    * O histórico que preenche o bloco. A execução mais recente do exercício
@@ -508,11 +599,11 @@ export function SessionPage() {
    * que só existe neste treino, por exemplo.
    */
   function historyOf(row: Row, block: SetBlock) {
-    const previous = previousByExercise.get(row.item.exerciseId)
+    const previous = previousByKey.get(row.key)
     const fromRole = previous?.byRole.get(blockRole(block, row.blocks))
     return {
       previous,
-      history: fromRole ?? lastByBlock.get(block.id),
+      history: fromRole ?? lastByBlock.get(`${block.id}|${row.key}`),
       fromOtherWorkout: !!fromRole && !previous?.sameWorkout,
     }
   }
@@ -560,7 +651,7 @@ export function SessionPage() {
         (sum, block) => sum + logs.filter((log) => log.blockId === block.id).length,
         0,
       )
-      return { name: row.exercise.name, planned, done }
+      return { name: exerciseLabel(row.exercise, row.variantId), planned, done }
     })
     .filter((row) => row.done < row.planned)
 
@@ -602,8 +693,9 @@ export function SessionPage() {
         <div className="stack">
           {rows.map((row) => {
             const { item, exercise, blocks } = row
-            const suggestion = suggestions.get(item.exerciseId)
+            const suggestion = suggestions.get(item.id)
             const marcadas = markedLastTime(row)
+            const label = exerciseLabel(exercise, row.variantId)
 
             const done = isExerciseDone(row)
             const expanded = isExerciseOpen(row)
@@ -628,7 +720,7 @@ export function SessionPage() {
                   >
                     <span className={expanded ? 'caret is-open' : 'caret'}>›</span>
                     <ExercisePhoto photo={exercise.photo} name={exercise.name} />
-                    <span className="card__title">{exercise.name}</span>
+                    <span className="card__title">{label}</span>
                     {rowSkipped ? (
                       <span className="chip">pulado</span>
                     ) : (
@@ -636,6 +728,20 @@ export function SessionPage() {
                     )}
                   </button>
                   <div className="row" style={{ gap: 2 }}>
+                    {(row.swapped || canSwap(row.planned, exercises)) && (
+                      <button
+                        type="button"
+                        className={
+                          row.swapped
+                            ? 'btn btn--icon btn--ghost is-active'
+                            : 'btn btn--icon btn--ghost'
+                        }
+                        aria-label={`Trocar ${label} só hoje`}
+                        onClick={() => setSwappingItemId(item.id)}
+                      >
+                        <SwapIcon />
+                      </button>
+                    )}
                     <button
                       type="button"
                       className={
@@ -664,7 +770,11 @@ export function SessionPage() {
                       aria-label={`Ver evolução de ${exercise.name}`}
                       onClick={() =>
                         navigate(`/exercicios/${exercise.id}`, {
-                          state: { from: `/sessao/${session.id}`, label: 'Treino' },
+                          state: {
+                            from: `/sessao/${session.id}`,
+                            label: 'Treino',
+                            variantId: row.variantId,
+                          },
                         })
                       }
                     >
@@ -673,9 +783,31 @@ export function SessionPage() {
                   </div>
                 </div>
 
-                {!rowSkipped && expanded && (
-                  <RivalLine exercise={exercise} sessionId={session.id} blocks={blocks} />
+                {!rowSkipped && row.swapped && (
+                  <div className="swap-note">
+                    <span>
+                      Troca de hoje · no lugar de{' '}
+                      <strong>{exerciseLabel(row.planned, row.plannedVariantId)}</strong>
+                    </span>
+                    <button
+                      type="button"
+                      className="btn btn--sm btn--ghost"
+                      onClick={() => changeSwap(row, null)}
+                    >
+                      Desfazer
+                    </button>
+                  </div>
                 )}
+
+                {/* A Arena mede a forma padrão do exercício: o rival e a carga
+                    para vencê-lo não dizem nada sobre os halteres nem sobre o
+                    equivalente de um dia. */}
+                {!rowSkipped &&
+                  expanded &&
+                  !row.swapped &&
+                  row.variantId === defaultVariantId(exercise) && (
+                    <RivalLine exercise={exercise} sessionId={session.id} blocks={blocks} />
+                  )}
 
                 {rowSkipped && (
                   <p className="hint" style={{ margin: '4px 0 0 22px' }}>
@@ -693,7 +825,7 @@ export function SessionPage() {
                   </p>
                 )}
 
-                {!rowSkipped && expanded && suggestion && !outcomes[item.exerciseId] && (
+                {!rowSkipped && expanded && suggestion && !outcomes[item.id] && (
                   <>
                     <SuggestionBanner
                       suggestion={suggestion}
@@ -704,7 +836,7 @@ export function SessionPage() {
                       onDismiss={() =>
                         setOutcomes((current) => ({
                           ...current,
-                          [item.exerciseId]: 'dispensada',
+                          [item.id]: 'dispensada',
                         }))
                       }
                     />
@@ -740,7 +872,7 @@ export function SessionPage() {
                   const { previous, history, fromOtherWorkout } = historyOf(row, block)
 
                   const last = history?.heaviest
-                  const fallback = lastByExercise.get(item.exerciseId)
+                  const fallback = lastByKey.get(row.key)
                   const rest = formatRest(block)
                   const plan = blockPlanParts(block)
                   const blockLogs = logs.filter((log) => log.blockId === block.id)
@@ -818,6 +950,8 @@ export function SessionPage() {
                               previous &&
                               ` · ${previous.workoutName}, ${formatRelativeDay(previous.startedAt)}`}
                           </>
+                        ) : row.swapped ? (
+                          `Primeira vez de ${label} neste bloco.`
                         ) : (
                           'Primeira vez registrando este bloco.'
                         )}
@@ -879,7 +1013,9 @@ export function SessionPage() {
                             saveSetLog({
                               id: existing?.id,
                               sessionId: session.id,
-                              exerciseId: item.exerciseId,
+                              exerciseId: exercise.id,
+                              variantId: row.variantId,
+                              swapped: row.swapped,
                               workoutItemId: item.id,
                               blockId: block.id,
                               setIndex,
@@ -983,7 +1119,14 @@ export function SessionPage() {
                         // escolhido na mão nesta tela sempre vence.
                         const withAutoDecrease = (existing: SetLog | undefined) => {
                           const current = mark ?? null
-                          if (floor === undefined || isTimeRow || touched !== undefined) return current
+                          if (
+                            row.swapped ||
+                            floor === undefined ||
+                            isTimeRow ||
+                            touched !== undefined
+                          ) {
+                            return current
+                          }
                           const reps = parseNumber(repsValue)
                           const wasBelow = existing?.reps !== undefined && existing.reps < floor
                           const isBelow = reps !== undefined && reps < floor
@@ -1003,7 +1146,9 @@ export function SessionPage() {
                           saveSetLog({
                             id: existing?.id,
                             sessionId: session.id,
-                            exerciseId: item.exerciseId,
+                            exerciseId: exercise.id,
+                            variantId: row.variantId,
+                            swapped: row.swapped,
                             workoutItemId: item.id,
                             blockId: block.id,
                             setIndex,
@@ -1109,37 +1254,48 @@ export function SessionPage() {
                                 <NoteIcon />
                               </button>
 
-                              <button
-                                type="button"
-                                className={mark === 'subir' ? 'bump-btn is-active' : 'bump-btn'}
-                                aria-label={
-                                  mark === 'subir'
-                                    ? `Não subir a carga da série ${setIndex + 1} na próxima vez`
-                                    : `Subir a carga da série ${setIndex + 1} na próxima vez`
-                                }
-                                aria-pressed={mark === 'subir'}
-                                onClick={() => toggleMark('subir')}
-                              >
-                                <ArrowUpIcon />
-                              </button>
+                              {/* Troca de um dia não mexe em carga: sem setas, as
+                                  colunas ficam vazias para o grid não andar. */}
+                              {row.swapped ? (
+                                <>
+                                  <span />
+                                  <span />
+                                </>
+                              ) : (
+                                <>
+                                  <button
+                                    type="button"
+                                    className={mark === 'subir' ? 'bump-btn is-active' : 'bump-btn'}
+                                    aria-label={
+                                      mark === 'subir'
+                                        ? `Não subir a carga da série ${setIndex + 1} na próxima vez`
+                                        : `Subir a carga da série ${setIndex + 1} na próxima vez`
+                                    }
+                                    aria-pressed={mark === 'subir'}
+                                    onClick={() => toggleMark('subir')}
+                                  >
+                                    <ArrowUpIcon />
+                                  </button>
 
-                              <button
-                                type="button"
-                                className={
-                                  mark === 'diminuir'
-                                    ? 'bump-btn bump-btn--down is-active'
-                                    : 'bump-btn bump-btn--down'
-                                }
-                                aria-label={
-                                  mark === 'diminuir'
-                                    ? `Não diminuir a carga da série ${setIndex + 1} na próxima vez`
-                                    : `Diminuir a carga da série ${setIndex + 1} na próxima vez`
-                                }
-                                aria-pressed={mark === 'diminuir'}
-                                onClick={() => toggleMark('diminuir')}
-                              >
-                                <ArrowDownIcon />
-                              </button>
+                                  <button
+                                    type="button"
+                                    className={
+                                      mark === 'diminuir'
+                                        ? 'bump-btn bump-btn--down is-active'
+                                        : 'bump-btn bump-btn--down'
+                                    }
+                                    aria-label={
+                                      mark === 'diminuir'
+                                        ? `Não diminuir a carga da série ${setIndex + 1} na próxima vez`
+                                        : `Diminuir a carga da série ${setIndex + 1} na próxima vez`
+                                    }
+                                    aria-pressed={mark === 'diminuir'}
+                                    onClick={() => toggleMark('diminuir')}
+                                  >
+                                    <ArrowDownIcon />
+                                  </button>
+                                </>
+                              )}
                             </div>
 
                             {lastMark === 'subir' && (
@@ -1262,6 +1418,21 @@ export function SessionPage() {
           onConfirm={() => {
             setConfirmFinish(false)
             void handleFinish()
+          }}
+        />
+      )}
+
+      {swappingRow && (
+        <SwapModal
+          planned={swappingRow.planned}
+          plannedVariantId={swappingRow.plannedVariantId}
+          current={{ exerciseId: swappingRow.exercise.id, variantId: swappingRow.variantId }}
+          exercises={exercises}
+          hasLogs={logsOf(swappingRow).length > 0}
+          onClose={() => setSwappingItemId(null)}
+          onPick={(swap) => {
+            changeSwap(swappingRow, swap)
+            setSwappingItemId(null)
           }}
         />
       )}

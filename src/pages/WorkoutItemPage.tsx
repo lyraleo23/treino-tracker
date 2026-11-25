@@ -12,6 +12,7 @@ import {
   deleteSetBlock,
   duplicateSetBlock,
   moveSetBlock,
+  setWorkoutItemVariant,
   updateSetBlock,
 } from '../db/actions'
 import { PageHeader } from '../components/PageHeader'
@@ -19,6 +20,7 @@ import { EmptyState } from '../components/EmptyState'
 import { SetBlockModal, type BlockFormData } from '../components/SetBlockModal'
 import { ArrowDownIcon, ArrowUpIcon, PlusIcon } from '../components/icons'
 import { blockPlanParts, formatBlockLabel, formatRest } from '../lib/format'
+import { resolveVariantId, variantName, variantsOf } from '../lib/variants'
 
 export function WorkoutItemPage() {
   const { workoutId, itemId } = useParams<{ workoutId: string; itemId: string }>()
@@ -59,13 +61,20 @@ export function WorkoutItemPage() {
 
   if (!data) return <div className="page" />
 
-  const { exercise, blocks } = data
+  const { item, exercise, blocks } = data
+  const variantId = resolveVariantId(exercise, item.variantId)
+  const variant = variantName(exercise, variantId)
 
   return (
     <>
       <PageHeader
         title={exercise.name}
-        subtitle={`${blocks.length} ${blocks.length === 1 ? 'bloco' : 'blocos'} de séries`}
+        subtitle={[
+          variant,
+          `${blocks.length} ${blocks.length === 1 ? 'bloco' : 'blocos'} de séries`,
+        ]
+          .filter(Boolean)
+          .join(' · ')}
         back
         backTo={`/treinos/${workoutId}`}
         backLabel="Treino"
@@ -82,6 +91,30 @@ export function WorkoutItemPage() {
       />
 
       <div className="page">
+        {variantsOf(exercise).length > 0 && (
+          <div className="field" style={{ marginBottom: 14 }}>
+            <span className="field__label">Forma de fazer neste treino</span>
+            <div className="chip-grid">
+              {variantsOf(exercise).map((option) => (
+                <button
+                  key={option.id}
+                  type="button"
+                  className={option.id === variantId ? 'chip-option is-active' : 'chip-option'}
+                  aria-pressed={option.id === variantId}
+                  onClick={() => itemId && void setWorkoutItemVariant(itemId, option.id)}
+                >
+                  {option.name}
+                </button>
+              ))}
+            </div>
+            <span className="hint">
+              Cada forma tem o próprio histórico de peso: o que pré-preenche e sobe neste
+              treino é o da forma escolhida. Para um dia de aparelho ocupado, use a troca
+              na hora do treino.
+            </span>
+          </div>
+        )}
+
         {blocks.length === 0 ? (
           <EmptyState
             icon="🧱"
