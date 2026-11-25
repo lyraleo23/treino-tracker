@@ -19,6 +19,7 @@ import { ExercisePicker } from '../components/ExercisePicker'
 import { WorkoutFormModal } from '../components/WorkoutFormModal'
 import { ArrowDownIcon, ArrowUpIcon, PlusIcon, TrashIcon } from '../components/icons'
 import { formatBlocksSummary } from '../lib/format'
+import { defaultVariantId, exerciseLabel, resolveVariantId, variantsOf } from '../lib/variants'
 
 export function WorkoutEditPage() {
   const { workoutId } = useParams<{ workoutId: string }>()
@@ -26,6 +27,8 @@ export function WorkoutEditPage() {
 
   const [picking, setPicking] = useState(false)
   const [pendingExercise, setPendingExercise] = useState<Exercise | null>(null)
+  /** Forma escolhida para o exercício que está entrando no treino. */
+  const [pendingVariant, setPendingVariant] = useState<string | undefined>(undefined)
   const [removingItem, setRemovingItem] = useState<{ id: string; name: string } | null>(null)
   const [renaming, setRenaming] = useState(false)
   const [copying, setCopying] = useState(false)
@@ -64,7 +67,12 @@ export function WorkoutEditPage() {
 
   async function handleAdd(exercise: Exercise, preset?: BlockPreset) {
     if (!workoutId) return
-    const itemId = await addWorkoutItem({ workoutId, exerciseId: exercise.id, preset })
+    const itemId = await addWorkoutItem({
+      workoutId,
+      exerciseId: exercise.id,
+      variantId: resolveVariantId(exercise, pendingVariant),
+      preset,
+    })
     setPendingExercise(null)
     // Sem modelo o exercício nasce vazio, então já abre a tela de montagem.
     if (!preset) navigate(`/treinos/${workoutId}/item/${itemId}`)
@@ -141,7 +149,7 @@ export function WorkoutEditPage() {
                     onClick={() => navigate(`/treinos/${workoutId}/item/${item.id}`)}
                   >
                     <div className="list__name">
-                      {exercise?.name ?? 'Exercício removido'}
+                      {exerciseLabel(exercise, resolveVariantId(exercise, item.variantId))}
                     </div>
                     <div className="list__meta">{formatBlocksSummary(blocks)}</div>
                   </button>
@@ -280,6 +288,7 @@ export function WorkoutEditPage() {
           onPick={(exercise) => {
             setPicking(false)
             setPendingExercise(exercise)
+            setPendingVariant(defaultVariantId(exercise))
           }}
         />
       )}
@@ -298,6 +307,26 @@ export function WorkoutEditPage() {
             </button>
           }
         >
+          {variantsOf(pendingExercise).length > 0 && (
+            <div className="field" style={{ marginBottom: 12 }}>
+              <span className="field__label">Forma de fazer</span>
+              <div className="chip-grid">
+                {variantsOf(pendingExercise).map((option) => (
+                  <button
+                    key={option.id}
+                    type="button"
+                    className={
+                      option.id === pendingVariant ? 'chip-option is-active' : 'chip-option'
+                    }
+                    aria-pressed={option.id === pendingVariant}
+                    onClick={() => setPendingVariant(option.id)}
+                  >
+                    {option.name}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
           <p className="hint" style={{ marginTop: 0 }}>
             Como montar os blocos de séries deste exercício?
           </p>

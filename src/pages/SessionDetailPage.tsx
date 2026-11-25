@@ -16,6 +16,7 @@ import {
   formatWeight,
 } from '../lib/format'
 import { logBounds, sessionDuration } from '../lib/session'
+import { exerciseLabel, historyKey, logVariantId } from '../lib/variants'
 
 interface NotesForm {
   notes: string
@@ -38,6 +39,13 @@ export function SessionDetailPage() {
     const logs = await db.setLogs.where('sessionId').equals(sessionId).toArray()
     const exerciseIds = [...new Set(logs.map((log) => log.exerciseId))]
     const exercises = await db.exercises.bulkGet(exerciseIds)
+    const exerciseById = new Map(exerciseIds.map((id, index) => [id, exercises[index]]))
+
+    // Um grupo por exercício + forma: o supino na barra e o supino nos
+    // halteres são cargas diferentes, mesmo na mesma sessão.
+    const keyOf = (log: SetLog) =>
+      historyKey(log.exerciseId, logVariantId(log, exerciseById.get(log.exerciseId)))
+    const groupKeys = [...new Set(logs.map(keyOf))]
     const blocks = await db.setBlocks.bulkGet([
       ...new Set(logs.map((log) => log.blockId).filter(Boolean)),
     ])
@@ -45,8 +53,10 @@ export function SessionDetailPage() {
       blocks.filter((block): block is SetBlock => !!block).map((block) => [block.id, block]),
     )
 
-    const groups = exerciseIds.map((id, index) => {
-      const own = logs.filter((log) => log.exerciseId === id)
+    const groups = groupKeys.map((key) => {
+      const own = logs.filter((log) => keyOf(log) === key)
+      const first = own[0]!
+      const exercise = exerciseById.get(first.exerciseId)
       const blockIds = [...new Set(own.map((log) => log.blockId))]
       const siblings = blockIds
         .map((blockId) => blockById.get(blockId))
@@ -54,7 +64,9 @@ export function SessionDetailPage() {
         .sort((a, b) => a.order - b.order)
 
       return {
-        name: exercises[index]?.name ?? 'Exercício removido',
+        key,
+        name: exerciseLabel(exercise, logVariantId(first, exercise)),
+        swapped: own.some((log) => log.swapped),
         blocks: blockIds
           .map((blockId) => {
             const block = blockById.get(blockId)
@@ -163,8 +175,15 @@ export function SessionDetailPage() {
         )}
 
         {groups.map((group) => (
-          <section key={group.name}>
-            <h2 className="section-title">{group.name}</h2>
+          <section key={group.key}>
+            <h2 className="section-title">
+              {group.name}
+              {group.swapped && (
+                <span className="chip chip--warn" style={{ marginLeft: 6 }}>
+                  troca do dia
+                </span>
+              )}
+            </h2>
             <div className="card card--tight">
               {group.blocks.map((block) => (
                 <div key={block.blockId} className={`block block--${block.kind}`}>

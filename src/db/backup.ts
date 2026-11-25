@@ -26,6 +26,7 @@ import {
 } from './db'
 import { newId } from '../lib/id'
 import { blobToDataUrl, dataUrlToBlob } from '../lib/image'
+import { defaultVariantId, variantsOf } from '../lib/variants'
 
 const FORMAT = 'treino-tracker-backup'
 const VERSION = 8
@@ -358,6 +359,10 @@ export async function mergeBackup(raw: string): Promise<void> {
       // idNoArquivo → idNoBanco: é o que mantém o histórico colado no exercício
       // certo em vez de criar uma cópia com outro id.
       const mapaExercicios = new Map<string, string>()
+      // Só para os casados pelo nome: forma no arquivo → forma no banco. Os
+      // casados pelo id e os novos mantêm os ids das formas como vieram.
+      const mapaFormas = new Map<string, Map<string, string>>()
+      const vindoPorId = new Map(exercisesFromFile.map((e) => [e.id, e]))
 
       for (const vindo of exercisesFromFile) {
         const mesmoId = porId.get(vindo.id)
@@ -369,6 +374,23 @@ export async function mergeBackup(raw: string): Promise<void> {
 
         const mesmoNome = porNome.get(normalizeName(vindo.name))
         if (mesmoNome) {
+          // As formas casam pelo nome, como o exercício: a "Barra" do arquivo
+          // é a "Barra" daqui, e só a que falta é acrescentada.
+          const formas = [...variantsOf(mesmoNome)]
+          const mapa = new Map<string, string>()
+          for (const forma of variantsOf(vindo)) {
+            const igual = formas.find((f) => normalizeName(f.name) === normalizeName(forma.name))
+            if (igual) {
+              mapa.set(forma.id, igual.id)
+              continue
+            }
+            const id = formas.some((f) => f.id === forma.id) ? newId() : forma.id
+            formas.push({ id, name: forma.name })
+            mapa.set(forma.id, id)
+          }
+          mapaFormas.set(vindo.id, mapa)
+          const padraoVindo = defaultVariantId(vindo)
+
           // Preserva nome e tipo do que já existe; só preenche o que falta.
           await db.exercises.update(mesmoNome.id, {
             muscleGroup: mesmoNome.muscleGroup ?? vindo.muscleGroup,
@@ -376,6 +398,11 @@ export async function mergeBackup(raw: string): Promise<void> {
             videoUrl: mesmoNome.videoUrl ?? vindo.videoUrl,
             photo: mesmoNome.photo ?? vindo.photo,
             prova: mesmoNome.prova ?? vindo.prova,
+            variants: formas.length > 0 ? formas : undefined,
+            defaultVariantId:
+              variantsOf(mesmoNome).length > 0
+                ? mesmoNome.defaultVariantId
+                : padraoVindo && mapa.get(padraoVindo),
           })
           mapaExercicios.set(vindo.id, mesmoNome.id)
           continue
@@ -386,6 +413,32 @@ export async function mergeBackup(raw: string): Promise<void> {
       }
 
       const resolver = (id: string) => mapaExercicios.get(id) ?? id
+
+      /**
+       * A forma no banco de uma série, item ou troca do arquivo. Sem forma, a
+       * do arquivo era a padrão de lá — e ela pode não ser a padrão daqui, então
+       * a forma fica explícita.
+       */
+      const resolverForma = (exerciseIdArquivo: string, variantId: string | undefined) => {
+        const mapa = mapaFormas.get(exerciseIdArquivo)
+        if (!mapa) return variantId
+        const propria = variantId ?? defaultVariantId(vindoPorId.get(exerciseIdArquivo))
+        return propria ? (mapa.get(propria) ?? propria) : variantId
+      }
+
+      // Equivalentes citam ids do arquivo; depois do laço todos já têm destino.
+      for (const vindo of exercisesFromFile) {
+        if (!vindo.equivalents?.length) continue
+        const destino = resolver(vindo.id)
+        const atual = await db.exercises.get(destino)
+        const lista = new Set(
+          [...(atual?.equivalents ?? []), ...vindo.equivalents].map(resolver),
+        )
+        lista.delete(destino)
+        await db.exercises.update(destino, {
+          equivalents: lista.size > 0 ? [...lista] : undefined,
+        })
+      }
 
       // Guardado antes do bulkPut: o arquivo traz o ativo dele junto.
       const ativoAntes = await db.programs.filter((p) => p.archived === 0).first()
@@ -421,7 +474,11 @@ export async function mergeBackup(raw: string): Promise<void> {
         }
 
         await db.workoutItems.bulkPut(
-          itensDoArquivo.map((item) => ({ ...item, exerciseId: resolver(item.exerciseId) })),
+          itensDoArquivo.map((item) => ({
+            ...item,
+            exerciseId: resolver(item.exerciseId),
+            variantId: resolverForma(item.exerciseId, item.variantId),
+          })),
         )
 
         for (const item of itensDoArquivo) {
@@ -441,10 +498,33 @@ export async function mergeBackup(raw: string): Promise<void> {
       }
 
       // Arquivo de plano vem sem histórico: nesse caso não se toca em nada.
-      if (backup.sessions.length > 0) await db.sessions.bulkPut(backup.sessions)
+      if (backup.sessions.length > 0) {
+        await db.sessions.bulkPut(
+          backup.sessions.map((session) =>
+            session.swaps
+              ? {
+                  ...session,
+                  swaps: Object.fromEntries(
+                    Object.entries(session.swaps).map(([itemId, swap]) => [
+                      itemId,
+                      {
+                        exerciseId: resolver(swap.exerciseId),
+                        variantId: resolverForma(swap.exerciseId, swap.variantId),
+                      },
+                    ]),
+                  ),
+                }
+              : session,
+          ),
+        )
+      }
       if (backup.setLogs.length > 0) {
         await db.setLogs.bulkPut(
-          backup.setLogs.map((log) => ({ ...log, exerciseId: resolver(log.exerciseId) })),
+          backup.setLogs.map((log) => ({
+            ...log,
+            exerciseId: resolver(log.exerciseId),
+            variantId: resolverForma(log.exerciseId, log.variantId),
+          })),
         )
       }
 

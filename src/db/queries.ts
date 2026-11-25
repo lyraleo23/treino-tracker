@@ -20,6 +20,25 @@ import {
 } from './db'
 import { anchorWeight, blockRole, isAnchorBlock, ladderIsBroken } from '../lib/ladder'
 import { formatNumber, startOfDay } from '../lib/format'
+import type { LogFilter } from '../lib/variants'
+
+/**
+ * De quem é o histórico procurado: um exercício numa forma. `key` é a chave do
+ * mapa de resposta — a tela da sessão usa uma por linha, porque o mesmo
+ * exercício pode aparecer em duas formas no treino, ou trocado por outro.
+ */
+export interface HistoryTarget {
+  key: string
+  exerciseId: string
+  /** Quais séries do exercício contam; ausente, todas. Ver `historyFilter`. */
+  filter?: LogFilter
+}
+
+/** Junta a exclusão da sessão aberta com o filtro de forma. */
+function relevantTo(excludeSessionId?: string, filter?: LogFilter): LogFilter {
+  return (log) =>
+    (!excludeSessionId || log.sessionId !== excludeSessionId) && (!filter || filter(log))
+}
 
 /**
  * Última série registrada para o exercício, considerando todo o histórico —
@@ -28,30 +47,34 @@ import { formatNumber, startOfDay } from '../lib/format'
 export async function getLastSetForExercise(
   exerciseId: string,
   excludeSessionId?: string,
+  filter?: LogFilter,
 ): Promise<SetLog | undefined> {
-  const range = db.setLogs
+  return db.setLogs
     .where('[exerciseId+completedAt]')
     .between([exerciseId, Dexie.minKey], [exerciseId, Dexie.maxKey])
     .reverse()
-
-  if (!excludeSessionId) return range.first()
-  return range.filter((log) => log.sessionId !== excludeSessionId).first()
+    .filter(relevantTo(excludeSessionId, filter))
+    .first()
 }
 
-/** Mapa exerciseId → última série, para pré-preencher a sessão de uma vez. */
-export async function getLastSetsForExercises(
-  exerciseIds: string[],
+/** Mapa key → última série, para pré-preencher a sessão de uma vez. */
+export async function getLastSetsFor(
+  targets: HistoryTarget[],
   excludeSessionId?: string,
 ): Promise<Map<string, SetLog>> {
   const entries = await Promise.all(
-    exerciseIds.map(
-      async (id) => [id, await getLastSetForExercise(id, excludeSessionId)] as const,
+    targets.map(
+      async (target) =>
+        [
+          target.key,
+          await getLastSetForExercise(target.exerciseId, excludeSessionId, target.filter),
+        ] as const,
     ),
   )
 
   const map = new Map<string, SetLog>()
-  for (const [id, log] of entries) {
-    if (log) map.set(id, log)
+  for (const [key, log] of entries) {
+    if (log) map.set(key, log)
   }
   return map
 }
@@ -60,14 +83,14 @@ export async function getLastSetsForExercises(
 export async function getLastSetForBlock(
   blockId: string,
   excludeSessionId?: string,
+  filter?: LogFilter,
 ): Promise<SetLog | undefined> {
-  const range = db.setLogs
+  return db.setLogs
     .where('[blockId+completedAt]')
     .between([blockId, Dexie.minKey], [blockId, Dexie.maxKey])
     .reverse()
-
-  if (!excludeSessionId) return range.first()
-  return range.filter((log) => log.sessionId !== excludeSessionId).first()
+    .filter(relevantTo(excludeSessionId, filter))
+    .first()
 }
 
 /**
@@ -82,9 +105,15 @@ export interface BlockHistory {
   heaviest: SetLog
 }
 
+/**
+ * O `filter` não é enfeite: numa troca, o equivalente grava no bloco do treino,
+ * e sem conferir exercício e forma o supino na barra voltaria com a carga do
+ * dia em que foi feito com halteres.
+ */
 export async function getBlockHistory(
   blockId: string,
   excludeSessionId?: string,
+  filter?: LogFilter,
 ): Promise<BlockHistory | undefined> {
   const logs = await db.setLogs
     .where('[blockId+completedAt]')
@@ -92,9 +121,7 @@ export async function getBlockHistory(
     .reverse()
     .toArray()
 
-  const relevant = excludeSessionId
-    ? logs.filter((log) => log.sessionId !== excludeSessionId)
-    : logs
+  const relevant = logs.filter(relevantTo(excludeSessionId, filter))
 
   const mostRecent = relevant[0]
   if (!mostRecent) return undefined
@@ -108,20 +135,24 @@ export async function getBlockHistory(
   return { sessionId: mostRecent.sessionId, bySetIndex, heaviest }
 }
 
-/** Mapa blockId → histórico da última sessão, para montar a tela de uma vez. */
+/** Mapa key → histórico da última sessão do bloco, para montar a tela de uma vez. */
 export async function getHistoryForBlocks(
-  blockIds: string[],
+  targets: { key: string; blockId: string; filter?: LogFilter }[],
   excludeSessionId?: string,
 ): Promise<Map<string, BlockHistory>> {
   const entries = await Promise.all(
-    blockIds.map(
-      async (id) => [id, await getBlockHistory(id, excludeSessionId)] as const,
+    targets.map(
+      async (target) =>
+        [
+          target.key,
+          await getBlockHistory(target.blockId, excludeSessionId, target.filter),
+        ] as const,
     ),
   )
 
   const map = new Map<string, BlockHistory>()
-  for (const [id, history] of entries) {
-    if (history) map.set(id, history)
+  for (const [key, history] of entries) {
+    if (history) map.set(key, history)
   }
   return map
 }
@@ -215,6 +246,7 @@ export async function getRecentExecutions(
   currentWorkoutId: string,
   limit: number,
   excludeSessionId?: string,
+  filter?: LogFilter,
 ): Promise<PreviousExecution[]> {
   if (limit <= 0) return []
 
@@ -224,9 +256,7 @@ export async function getRecentExecutions(
     .reverse()
     .toArray()
 
-  const relevant = excludeSessionId
-    ? logs.filter((log) => log.sessionId !== excludeSessionId)
-    : logs
+  const relevant = logs.filter(relevantTo(excludeSessionId, filter))
 
   // Em ordem decrescente, as primeiras `limit` sessões distintas são as mais
   // recentes; séries de uma sessão já aceita continuam entrando nela.
@@ -250,26 +280,37 @@ export async function getPreviousExecution(
   exerciseId: string,
   currentWorkoutId: string,
   excludeSessionId?: string,
+  filter?: LogFilter,
 ): Promise<PreviousExecution | undefined> {
-  return (await getRecentExecutions(exerciseId, currentWorkoutId, 1, excludeSessionId))[0]
+  return (
+    await getRecentExecutions(exerciseId, currentWorkoutId, 1, excludeSessionId, filter)
+  )[0]
 }
 
-/** Mapa exerciseId → execução anterior, para montar a sessão de uma vez. */
-export async function getPreviousExecutions(
-  exerciseIds: string[],
+/** Mapa key → execução anterior, para montar a sessão de uma vez. */
+export async function getPreviousExecutionsFor(
+  targets: HistoryTarget[],
   currentWorkoutId: string,
   excludeSessionId?: string,
 ): Promise<Map<string, PreviousExecution>> {
   const entries = await Promise.all(
-    exerciseIds.map(
-      async (id) =>
-        [id, await getPreviousExecution(id, currentWorkoutId, excludeSessionId)] as const,
+    targets.map(
+      async (target) =>
+        [
+          target.key,
+          await getPreviousExecution(
+            target.exerciseId,
+            currentWorkoutId,
+            excludeSessionId,
+            target.filter,
+          ),
+        ] as const,
     ),
   )
 
   const map = new Map<string, PreviousExecution>()
-  for (const [id, execution] of entries) {
-    if (execution) map.set(id, execution)
+  for (const [key, execution] of entries) {
+    if (execution) map.set(key, execution)
   }
   return map
 }
@@ -382,16 +423,21 @@ export async function getProgressionSuggestion(
   currentWorkoutId: string,
   excludeSessionId: string,
   progression: ProgressionSettings = DEFAULT_PROGRESSION,
+  filter?: LogFilter,
 ): Promise<ProgressionSuggestion | null> {
   const anchorBlocks = blocks.filter((block) => isAnchorBlock(block.kind))
   if (anchorBlocks.length === 0) return null
 
   const exigidas = clampSessionsToIncrease(progression.sessionsToIncrease)
+  // Séries de troca temporária não medem evolução: ficam de fora até da
+  // contagem. Uma sessão em que o exercício só apareceu trocado nem existe
+  // aqui, então também não quebra a sequência de quem fechou o topo da faixa.
   const executions = await getRecentExecutions(
     exerciseId,
     currentWorkoutId,
     exigidas,
     excludeSessionId,
+    (log) => !log.swapped && (!filter || filter(log)),
   )
 
   const execution = executions[0]
@@ -473,11 +519,15 @@ export interface ExercisePoint {
  * Histórico do exercício agrupado por sessão, em ordem cronológica.
  * Alimenta tanto o gráfico de evolução quanto a tabela de execuções.
  */
-export async function getExerciseHistory(exerciseId: string): Promise<ExercisePoint[]> {
-  const logs = await db.setLogs
+export async function getExerciseHistory(
+  exerciseId: string,
+  filter?: LogFilter,
+): Promise<ExercisePoint[]> {
+  const all = await db.setLogs
     .where('[exerciseId+completedAt]')
     .between([exerciseId, Dexie.minKey], [exerciseId, Dexie.maxKey])
     .toArray()
+  const logs = filter ? all.filter(filter) : all
 
   const bySession = new Map<string, ExercisePoint>()
 

@@ -18,6 +18,21 @@ sem backend e sem cadastro. Todos os dados ficam no próprio aparelho (IndexedDB
 - **Catálogo global de exercícios**: o exercício existe uma vez só e é referenciado
   pelos treinos. Por isso **o peso usado é lembrado em qualquer treino ou sessão** —
   registrou 40 kg no supino do Treino A, ele aparece pré-preenchido no Treino B.
+- **Formas de fazer**: o mesmo exercício em mais de um equipamento — supino na
+  **barra**, nos **halteres**, no **Smith**. Cadastradas em *Exercícios → Editar*,
+  cada uma guarda o **próprio histórico de carga**: o peso pré-preenchido, a sugestão
+  de aumento e as setas ↑↓ andam por exercício + forma. Cada treino escolhe com qual
+  forma faz o exercício (ao adicioná-lo, ou na tela dos blocos dele); sem escolha,
+  vale a **padrão**. As séries de antes das formas existirem contam para a padrão.
+  A Arena mede só a forma padrão.
+- **Exercícios equivalentes**: também no cadastro, os exercícios que podem entrar no
+  lugar de outro. A ligação vale nos dois sentidos.
+- **Troca só hoje**: a barra está ocupada? O botão **⇄** no cartão do exercício, na
+  sessão, abre a troca temporária — outra forma de fazer ou um equivalente, só nesta
+  sessão; o treino continua como está. A troca pré-preenche com o próprio histórico,
+  mas fica **fora da sugestão de carga**: sem banner de aumento, sem setas ↑↓, e as
+  séries dela não contam na progressão de ninguém. As séries já registradas antes de
+  trocar continuam como foram feitas, e **Desfazer** volta ao planejado.
 - **Sessões**: registra peso, repetições/tempo e observação em cada série, com
   cronômetro regressivo nos blocos de tempo. **Série extra** acrescenta uma linha
   além do planejado, e **Remover série** tira a última delas — registrada ou não.
@@ -152,7 +167,10 @@ src/
 
 O modelo de dados vai de `Workout → WorkoutItem → SetBlock → SetLog`. O `SetLog`
 guarda `exerciseId` (peso lembrado entre treinos) **e** `blockId` (peso lembrado por
-bloco, para o feeder não herdar a carga do working).
+bloco, para o feeder não herdar a carga do working). Com formas de fazer, guarda
+também o `variantId`: o histórico é de exercício + forma, e as regras de qual série
+pertence a qual forma moram em `src/lib/variants.ts`. Uma troca temporária fica em
+`Session.swaps`, e as séries feitas nela levam `swapped`.
 
 ## Stack
 

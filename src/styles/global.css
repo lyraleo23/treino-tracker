@@ -975,6 +975,33 @@ html.is-scroll-locked body {
   color: var(--warn);
 }
 
+/* Troca temporária: o exercício do cartão não é o do plano, só hoje. */
+.swap-note {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin: 8px 0 2px;
+  padding: 6px 6px 6px 12px;
+  border-radius: var(--radius-sm);
+  border: 1px dashed color-mix(in srgb, var(--warn) 55%, transparent);
+  background: color-mix(in srgb, var(--warn) 10%, transparent);
+  color: var(--text-dim);
+  font-size: 13px;
+}
+
+.swap-note strong {
+  color: var(--text);
+}
+
+/* Uma forma de fazer no cadastro do exercício: nome, padrão e remover. */
+.variant-row {
+  display: grid;
+  grid-template-columns: 1fr auto 38px;
+  align-items: center;
+  gap: 6px;
+}
+
 .set-note {
   min-height: 38px;
   margin: 0 0 8px 26px;
@@ -1243,6 +1270,11 @@ html.is-scroll-locked body {
 
 .list__item:active {
   background: var(--surface-2);
+}
+
+/* Opção escolhida numa lista de escolha única (a troca temporária). */
+.list__item[aria-pressed='true'] {
+  background: var(--accent-soft);
 }
 
 .list__main {

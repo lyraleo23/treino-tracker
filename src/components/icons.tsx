@@ -159,3 +159,11 @@ export const TrophyIcon = (props: IconProps) => (
     <path d="M12 13v4M8.5 20h7M10 17h4v3h-4z" />
   </Icon>
 )
+
+/** Duas setas opostas: trocar o exercício só nesta sessão. */
+export const SwapIcon = (props: IconProps) => (
+  <Icon {...props}>
+    <path d="M4 8h13M14 4.5 17.5 8 14 11.5" />
+    <path d="M20 16H7M10 12.5 6.5 16l3.5 3.5" />
+  </Icon>
+)
