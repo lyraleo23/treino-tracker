@@ -10,6 +10,17 @@ import {
   type Duel,
   type Standing,
 } from '../lib/strength'
+import { defaultVariantId, historyFilter } from '../lib/variants'
+
+/**
+ * As séries que disputam a prova do exercício: só as da forma padrão. A prova
+ * descreve um movimento — o supino da Arena é o da barra —, e 20 kg em cada
+ * halter não são a mesma marca que 20 kg na barra. Um equivalente com prova
+ * própria disputa por ele mesmo.
+ */
+function arenaLogs(exercise: Exercise, logs: SetLog[]): SetLog[] {
+  return logs.filter(historyFilter(exercise, defaultVariantId(exercise)))
+}
 
 /** A melhor série de um exercício na janela da Arena. */
 export interface Mark {
@@ -82,7 +93,7 @@ export async function getExerciseDuel(
     .between([exerciseId, strengthWindowStart()], [exerciseId, Dexie.maxKey])
     .toArray()
 
-  const scored = score(logs, prova)
+  const scored = score(arenaLogs(exercise, logs), prova)
   const mark = best(scored)
   const before = best(scored.filter((item) => item.log.sessionId !== sessionId))
   const duel = duelFor(prova.id, mark?.value, RUNGS)
@@ -139,7 +150,7 @@ export async function getArena(): Promise<Arena> {
     if (linked.length === 0) continue
 
     const scored = linked.flatMap((exercise) =>
-      score(logsByExercise.get(exercise.id) ?? [], prova),
+      score(arenaLogs(exercise, logsByExercise.get(exercise.id) ?? []), prova),
     )
     const mark = best(scored)
     if (mark) values[prova.id] = mark.value

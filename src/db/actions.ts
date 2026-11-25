@@ -9,6 +9,7 @@ import {
   type Cycle,
   type Exercise,
   type ExerciseKind,
+  type ExerciseVariant,
   type Flag,
   type LadderRatios,
   type MealLogItem,
@@ -17,6 +18,7 @@ import {
   type Program,
   type ProgressionSettings,
   type Session,
+  type SessionSwap,
   type SetBlock,
   type SetLog,
   type Workout,
@@ -24,7 +26,8 @@ import {
 } from './db'
 import type { ProvaId } from './characters'
 import { newId } from '../lib/id'
-import { startOfDay } from '../lib/format'
+import { normalizeSearchText, startOfDay } from '../lib/format'
+import { defaultVariantId, resolveVariantId, variantsOf } from '../lib/variants'
 import { computeItemNutrition } from '../lib/nutrition'
 
 // --- Exercícios ---------------------------------------------------------
@@ -39,6 +42,8 @@ export async function createExercise(data: {
   cardioFields?: CardioField[]
   weightStep?: number
   prova?: ProvaId
+  variants?: ExerciseVariant[]
+  defaultVariantId?: string
 }): Promise<string> {
   const exercise: Exercise = {
     id: newId(),
@@ -50,6 +55,8 @@ export async function createExercise(data: {
     cardioFields: data.cardioFields,
     weightStep: data.weightStep,
     prova: data.prova,
+    variants: data.variants?.length ? data.variants : undefined,
+    defaultVariantId: data.variants?.length ? data.defaultVariantId : undefined,
     photo: data.photo,
     photoUpdatedAt: data.photo ? Date.now() : undefined,
     archived: 0,
@@ -74,10 +81,38 @@ export async function updateExercise(
       | 'cardioFields'
       | 'weightStep'
       | 'prova'
+      | 'variants'
+      | 'defaultVariantId'
     >
   >,
 ): Promise<void> {
   await db.exercises.update(id, data)
+}
+
+/**
+ * Grava os equivalentes do exercício **dos dois lados**: ligar o supino ao
+ * supino na máquina faz o supino na máquina oferecer o supino também. Quem sai
+ * da lista perde a volta junto.
+ */
+export async function setExerciseEquivalents(id: string, ids: string[]): Promise<void> {
+  await db.transaction('rw', db.exercises, async () => {
+    const wanted = new Set(ids.filter((other) => other !== id))
+    // `undefined` no update apaga o campo: lista vazia não fica gravada.
+    await db.exercises.update(id, { equivalents: wanted.size > 0 ? [...wanted] : undefined })
+
+    for (const other of await db.exercises.toArray()) {
+      if (other.id === id) continue
+      const list = new Set(other.equivalents ?? [])
+      const has = list.has(id)
+      if (wanted.has(other.id) === has) continue
+
+      if (has) list.delete(id)
+      else list.add(id)
+      await db.exercises.update(other.id, {
+        equivalents: list.size > 0 ? [...list] : undefined,
+      })
+    }
+  })
 }
 
 /** Passar `undefined` remove a foto. */
@@ -106,21 +141,109 @@ export async function setExerciseArchived(id: string, archived: Flag): Promise<v
  * Junta dois exercícios que deveriam ser um só: todo o histórico e as vagas em
  * treinos passam para o destino, e a origem sai do catálogo.
  *
- * Só o `exerciseId` é reescrito. Os logs guardam também `workoutItemId` e
- * `blockId`, que continuam apontando para itens e blocos intactos — por isso a
- * mesclagem não precisa mexer em mais nada.
+ * O `exerciseId` é reescrito, e com ele a forma: as formas da origem entram no
+ * destino — casadas pelo nome quando ele já tem uma igual —, para a barra da
+ * origem continuar sendo barra. Os logs guardam também `workoutItemId` e
+ * `blockId`, que continuam apontando para itens e blocos intactos. Os
+ * equivalentes e as trocas de sessão que citavam a origem passam a citar o
+ * destino.
  */
 export async function mergeExercises(sourceId: string, targetId: string): Promise<void> {
   if (sourceId === targetId) return
 
-  await db.transaction('rw', [db.exercises, db.workoutItems, db.setLogs], async () => {
-    const target = await db.exercises.get(targetId)
-    if (!target) return
+  await db.transaction(
+    'rw',
+    [db.exercises, db.workoutItems, db.setLogs, db.sessions],
+    async () => {
+      const target = await db.exercises.get(targetId)
+      if (!target) return
+      const source = await db.exercises.get(sourceId)
 
-    await db.setLogs.where('exerciseId').equals(sourceId).modify({ exerciseId: targetId })
-    await db.workoutItems.where('exerciseId').equals(sourceId).modify({ exerciseId: targetId })
-    await db.exercises.delete(sourceId)
-  })
+      // Forma da origem → forma do destino.
+      const variants = [...variantsOf(target)]
+      const variantMap = new Map<string, string>()
+      for (const variant of variantsOf(source)) {
+        const same = variants.find(
+          (v) => normalizeSearchText(v.name) === normalizeSearchText(variant.name),
+        )
+        if (same) {
+          variantMap.set(variant.id, same.id)
+          continue
+        }
+        const id = variants.some((v) => v.id === variant.id) ? newId() : variant.id
+        variants.push({ id, name: variant.name })
+        variantMap.set(variant.id, id)
+      }
+
+      const sourceHasVariants = variantsOf(source).length > 0
+      const sourceDefault = defaultVariantId(source)
+      // Sem formas na origem, tudo dela era uma coisa só e cai na padrão do
+      // destino. Uma forma já removida da origem continua órfã: herdar carga
+      // dela seria pior que não herdar.
+      const mapLogVariant = (variantId: string | undefined) => {
+        if (!sourceHasVariants) return undefined
+        const own = variantId ?? sourceDefault
+        return own ? (variantMap.get(own) ?? own) : undefined
+      }
+
+      const equivalents = new Set([
+        ...(target.equivalents ?? []),
+        ...(source?.equivalents ?? []),
+      ])
+      equivalents.delete(sourceId)
+      equivalents.delete(targetId)
+
+      await db.exercises.update(targetId, {
+        variants: variants.length > 0 ? variants : undefined,
+        defaultVariantId:
+          variantsOf(target).length > 0
+            ? target.defaultVariantId
+            : sourceDefault && variantMap.get(sourceDefault),
+        equivalents: equivalents.size > 0 ? [...equivalents] : undefined,
+      })
+
+      await db.setLogs
+        .where('exerciseId')
+        .equals(sourceId)
+        .modify((log: SetLog) => {
+          log.exerciseId = targetId
+          const variantId = mapLogVariant(log.variantId)
+          if (variantId) log.variantId = variantId
+          else delete log.variantId
+        })
+
+      await db.workoutItems
+        .where('exerciseId')
+        .equals(sourceId)
+        .modify((item: WorkoutItem) => {
+          item.exerciseId = targetId
+          const own = resolveVariantId(source, item.variantId)
+          const variantId = own ? variantMap.get(own) : undefined
+          if (variantId) item.variantId = variantId
+          else delete item.variantId
+        })
+
+      // Quem apontava a origem como equivalente passa a apontar o destino.
+      for (const other of await db.exercises.toArray()) {
+        if (other.id === sourceId || other.id === targetId) continue
+        if (!other.equivalents?.includes(sourceId)) continue
+        const list = new Set(other.equivalents.filter((id) => id !== sourceId))
+        list.add(targetId)
+        await db.exercises.update(other.id, { equivalents: [...list] })
+      }
+
+      await db.sessions.toCollection().modify((session: Session) => {
+        for (const swap of Object.values(session.swaps ?? {})) {
+          if (swap.exerciseId !== sourceId) continue
+          swap.exerciseId = targetId
+          const own = resolveVariantId(source, swap.variantId)
+          swap.variantId = own ? variantMap.get(own) : undefined
+        }
+      })
+
+      await db.exercises.delete(sourceId)
+    },
+  )
 }
 
 /**
@@ -146,6 +269,15 @@ export async function deleteExercise(id: string): Promise<void> {
 
       await db.workoutItems.where('exerciseId').equals(id).delete()
       await db.exercises.delete(id)
+
+      // Ninguém continua oferecendo como troca um exercício que não existe.
+      for (const other of await db.exercises.toArray()) {
+        if (!other.equivalents?.includes(id)) continue
+        const list = other.equivalents.filter((equivalent) => equivalent !== id)
+        await db.exercises.update(other.id, {
+          equivalents: list.length > 0 ? list : undefined,
+        })
+      }
     },
   )
 }
@@ -694,6 +826,7 @@ export async function moveWorkout(id: string, direction: -1 | 1): Promise<void> 
 export async function addWorkoutItem(data: {
   workoutId: string
   exerciseId: string
+  variantId?: string
   preset?: BlockPreset
 }): Promise<string> {
   const last = await db.workoutItems
@@ -705,12 +838,26 @@ export async function addWorkoutItem(data: {
     id: newId(),
     workoutId: data.workoutId,
     exerciseId: data.exerciseId,
+    variantId: data.variantId,
     order: (last?.order ?? -1) + 1,
   }
   await db.workoutItems.add(item)
 
   if (data.preset) await applyPreset(item.id, data.preset)
   return item.id
+}
+
+/**
+ * Com que forma este treino faz o exercício. Trocar não mexe em série alguma:
+ * o histórico de cada forma continua dela, e a próxima sessão já pré-preenche
+ * com o da forma escolhida.
+ */
+export async function setWorkoutItemVariant(
+  id: string,
+  variantId: string | undefined,
+): Promise<void> {
+  // `undefined` no update apaga o campo, e a forma padrão volta a valer.
+  await db.workoutItems.update(id, { variantId })
 }
 
 /** Remove o exercício do treino junto com os blocos que só existiam nele. */
@@ -983,6 +1130,30 @@ export async function setItemSkipped(
   })
 }
 
+/**
+ * Troca o exercício só nesta sessão — outra forma de fazer ou um equivalente —,
+ * ou desfaz a troca com `null`. As séries já registradas continuam como foram
+ * feitas: cada uma guarda o exercício e a forma de quando foi concluída.
+ */
+export async function setItemSwap(
+  sessionId: string,
+  workoutItemId: string,
+  swap: SessionSwap | null,
+): Promise<void> {
+  await db.transaction('rw', db.sessions, async () => {
+    const session = await db.sessions.get(sessionId)
+    if (!session) return
+
+    const swaps = { ...session.swaps }
+    if (swap) swaps[workoutItemId] = swap
+    else delete swaps[workoutItemId]
+
+    await db.sessions.update(sessionId, {
+      swaps: Object.keys(swaps).length > 0 ? swaps : undefined,
+    })
+  })
+}
+
 type SessionNotes = Pick<
   Session,
   'notes' | 'feeling' | 'strongPoints' | 'improvePoints'
@@ -1021,6 +1192,9 @@ export async function saveSetLog(data: {
   calories?: number
   note?: string
   nextLoad?: NextLoad
+  /** Só na criação: a forma e a troca são de quando a série foi concluída. */
+  variantId?: string
+  swapped?: boolean
 }): Promise<string> {
   const measures = {
     weight: data.weight,
@@ -1048,6 +1222,8 @@ export async function saveSetLog(data: {
     id: newId(),
     sessionId: data.sessionId,
     exerciseId: data.exerciseId,
+    variantId: data.variantId,
+    swapped: data.swapped ? true : undefined,
     workoutItemId: data.workoutItemId,
     blockId: data.blockId,
     setIndex: data.setIndex,

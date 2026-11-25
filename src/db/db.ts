@@ -381,8 +381,35 @@ export interface Exercise {
    * academia aos personagens; ausente, o exercício fica fora da Arena.
    */
   prova?: ProvaId
+  /**
+   * Formas de fazer o mesmo movimento: o supino na barra, nos halteres, no
+   * Smith. Cada uma guarda o próprio histórico de carga — 40 kg na barra não
+   * dizem nada sobre o halter. Ausente ou vazia, o exercício tem uma forma só e
+   * tudo funciona como antes delas existirem.
+   */
+  variants?: ExerciseVariant[]
+  /**
+   * A forma usada quando o treino não escolhe outra. É também a dona das
+   * séries gravadas antes das formas existirem, que não sabem de qual forma
+   * são. Ausente (ou apontando para uma forma removida) vale a primeira.
+   */
+  defaultVariantId?: string
+  /**
+   * Exercícios que podem entrar no lugar deste num dia de aparelho ocupado. A
+   * relação é simétrica — `setExerciseEquivalents` grava dos dois lados —, mas
+   * quem lê junta as duas direções mesmo assim, para um backup torto não
+   * esconder a troca.
+   */
+  equivalents?: string[]
   archived: Flag
   createdAt: number
+}
+
+/** Uma forma de fazer o exercício: "Barra", "Halteres", "Smith". */
+export interface ExerciseVariant {
+  /** Único dentro do exercício; é o que os SetLog e os WorkoutItem guardam. */
+  id: string
+  name: string
 }
 
 /**
@@ -454,6 +481,12 @@ export interface WorkoutItem {
   id: string
   workoutId: string
   exerciseId: string
+  /**
+   * Com que forma este treino faz o exercício: o Treino A no supino com barra,
+   * o B com halteres. Ausente (ou apontando para uma forma removida) vale a
+   * forma padrão do exercício.
+   */
+  variantId?: string
   order: number
 }
 
@@ -510,17 +543,46 @@ export interface Session {
    * aprender a ignorar linha falsa.
    */
   skipped?: string[]
+  /**
+   * Trocas só desta sessão, por `workoutItemId`: a barra estava ocupada e o
+   * supino saiu com halteres, ou entrou um equivalente no lugar. O plano do
+   * treino não muda; amanhã o exercício volta como estava. Mora na sessão pelo
+   * mesmo motivo do `skipped` — o treino atravessa recarregamentos da página.
+   */
+  swaps?: Record<string, SessionSwap>
   notes?: string
   feeling?: string
   strongPoints?: string
   improvePoints?: string
 }
 
+/** O que entrou no lugar do planejado numa sessão. */
+export interface SessionSwap {
+  /** O próprio exercício do treino, quando a troca é só da forma de fazer. */
+  exerciseId: string
+  /** Ausente vale a forma padrão do exercício escolhido. */
+  variantId?: string
+}
+
 /** Uma série efetivamente executada. */
 export interface SetLog {
   id: string
   sessionId: string
+  /** O exercício que foi feito de fato — numa troca, o que entrou no lugar. */
   exerciseId: string
+  /**
+   * A forma em que foi feita. Ausente nas séries de antes das formas existirem
+   * e nos exercícios de uma forma só; nesse caso a série conta para a forma
+   * padrão. Ver `lib/variants.ts`.
+   */
+  variantId?: string
+  /**
+   * Feita numa troca temporária. Entra no histórico da forma (ou do
+   * equivalente) e pré-preenche a próxima vez, mas fica fora da sugestão de
+   * carga: troca de um dia é para não ficar sem treinar, não para medir
+   * evolução. Sem índice, por isso `true` e não `Flag`.
+   */
+  swapped?: true
   workoutItemId: string
   blockId: string
   setIndex: number

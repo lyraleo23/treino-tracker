@@ -24,6 +24,7 @@ import { DuelLadder } from '../components/DuelLadder'
 import { VideoIcon } from '../components/icons'
 import { openExternal } from '../lib/image'
 import { readThemeTokens, useTheme } from '../lib/theme'
+import { equivalentsOf, historyFilter, variantsOf } from '../lib/variants'
 import {
   KIND_LABELS,
   formatDate,
@@ -131,6 +132,8 @@ function ChartTooltip({
 interface FromState {
   from?: string
   label?: string
+  /** Forma que estava sendo feita: o gráfico já abre nela. */
+  variantId?: string
 }
 
 export function ExerciseHistoryPage() {
@@ -146,6 +149,8 @@ export function ExerciseHistoryPage() {
   const [confirmArchive, setConfirmArchive] = useState(false)
   const [merging, setMerging] = useState(false)
   const [mergeTarget, setMergeTarget] = useState<Exercise | null>(null)
+  /** Forma do gráfico; `undefined` junta todas. */
+  const [variantFilter, setVariantFilter] = useState<string | undefined>(origin.variantId)
 
   const theme = useTheme()
   const chartColors = useMemo(() => {
@@ -164,10 +169,22 @@ export function ExerciseHistoryPage() {
     [exerciseId],
   )
 
-  const history = useLiveQuery(
-    async () => (exerciseId ? await getExerciseHistory(exerciseId) : []),
-    [exerciseId],
-  )
+  const history = useLiveQuery(async () => {
+    if (!exerciseId) return []
+    const current = await db.exercises.get(exerciseId)
+    const selected =
+      current && variantsOf(current).some((v) => v.id === variantFilter)
+        ? historyFilter(current, variantFilter)
+        : undefined
+    return getExerciseHistory(exerciseId, selected)
+  }, [exerciseId, variantFilter])
+
+  const equivalents = useLiveQuery(async () => {
+    if (!exerciseId) return []
+    const all = await db.exercises.toArray()
+    const current = all.find((e) => e.id === exerciseId)
+    return current ? equivalentsOf(current, all) : []
+  }, [exerciseId])
 
   /**
    * Treinos onde os dois exercícios convivem. Mesclar ali deixa o treino com
@@ -283,6 +300,34 @@ export function ExerciseHistoryPage() {
           <p className="hint" style={{ marginTop: 10 }}>
             {exercise.notes}
           </p>
+        )}
+
+        {equivalents && equivalents.length > 0 && (
+          <p className="hint" style={{ marginTop: 10 }}>
+            Equivalentes: {equivalents.map((other) => other.name).join(', ')}.
+          </p>
+        )}
+
+        {variantsOf(exercise).length > 0 && (
+          <div className="segmented" style={{ margin: '12px 0 10px' }}>
+            <button
+              type="button"
+              aria-pressed={!variantsOf(exercise).some((v) => v.id === variantFilter)}
+              onClick={() => setVariantFilter(undefined)}
+            >
+              Todas
+            </button>
+            {variantsOf(exercise).map((variant) => (
+              <button
+                key={variant.id}
+                type="button"
+                aria-pressed={variant.id === variantFilter}
+                onClick={() => setVariantFilter(variant.id)}
+              >
+                {variant.name}
+              </button>
+            ))}
+          </div>
         )}
 
         {history.length === 0 ? (
