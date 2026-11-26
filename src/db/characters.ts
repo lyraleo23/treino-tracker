@@ -7,6 +7,7 @@
  */
 
 import { GTA6_CHARACTERS } from './catalog/gta6'
+import { GTA_SA_CHARACTERS } from './catalog/gta-sa'
 
 /** Unidade em que a prova é medida — carga ou tempo segurado. */
 export type ProvaUnit = 'kg' | 's'
@@ -186,7 +187,7 @@ export function rungName(rung: Rung): string {
  * números como vieram da fonte (libras, observações) e converte aqui na hora
  * de montar o personagem.
  */
-export const CHARACTERS: Character[] = [...GTA6_CHARACTERS]
+export const CHARACTERS: Character[] = [...GTA6_CHARACTERS, ...GTA_SA_CHARACTERS]
 
 /** Todos os degraus da Arena, de todos os personagens. */
 export const RUNGS: Rung[] = CHARACTERS.flatMap(rungsOf)

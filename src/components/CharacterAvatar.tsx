@@ -10,13 +10,14 @@ interface Props {
   size?: 'sm' | 'md' | 'lg'
 }
 
+/**
+ * Primeira letra do primeiro e do último nome: "Jason Duval" vira JD, e
+ * 'Carl "CJ" Johnson' vira CJ — o apelido entre aspas do meio fica de fora.
+ */
 function initials(name: string): string {
-  return name
-    .split(/\s+/)
-    .filter(Boolean)
-    .slice(0, 2)
-    .map((word) => word[0]!.toUpperCase())
-    .join('')
+  const words = name.split(/\s+/).filter((word) => /\p{L}/u.test(word))
+  const picked = words.length > 1 ? [words[0]!, words[words.length - 1]!] : words
+  return picked.map((word) => word.match(/\p{L}/u)![0].toUpperCase()).join('')
 }
 
 /**

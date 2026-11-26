@@ -97,7 +97,9 @@ sem backend e sem cadastro. Todos os dados ficam no próprio aparelho (IndexedDB
     próprias cargas e vira um degrau da Arena — "Disputando com Jason Duval · Força
     3", "Você é Lucia Caminos · Força 2". O primeiro elenco é o do **GTA VI** — Jason
     e Lucia, Força 1 a 4 —, com as cargas das capturas do jogo: em cada exercício, a
-    carga mais leve do menu é a Força 1 e a mais pesada, a Força 4.
+    carga mais leve do menu é a Força 1 e a mais pesada, a Força 4. Do **GTA: San
+    Andreas** vem o **CJ**, Nível 1 a 10, com as cargas das academias do jogo no
+    supino (40 a 320 lb) e na rosca com halteres (20 a 110 lb, por halter).
   - **Provas sem personagem** (remada, prancha...) ficam ocultas por padrão; em
     *Ajustes → Arena* dá para mostrá-las. Ocultar não mexe nos exercícios: eles
     continuam ligados à prova, que volta sozinha quando um personagem a disputar. A foto é escolhida no

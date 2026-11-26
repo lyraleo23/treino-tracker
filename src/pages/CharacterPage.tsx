@@ -79,6 +79,7 @@ export function CharacterPage() {
     rungsOf(character).map((rung) => compareWith(rung, yours)),
   )
   const leveled = summary.results.some((item) => item.rung.level !== undefined)
+  const manyLevels = summary.results.length > 5
   const result =
     summary.results.find((item) => item.rung.level === pickedLevel) ??
     summary.next ??
@@ -149,13 +150,18 @@ export function CharacterPage() {
         {leveled && (
           <>
             <h2 className="section-title">{character.levelLabel ?? 'Nível'}</h2>
-            <div className="segmented">
+            {/* Até cinco níveis cabem numa barra; o CJ tem dez, e com os ✓ dos
+                vencidos a barra estouraria a 320px — vira chips que quebram linha. */}
+            <div className={manyLevels ? 'chip-grid chip-grid--wide' : 'segmented'}>
               {summary.results.map((item) => {
                 const reached = item.ratio !== undefined && item.ratio >= 1
                 return (
                   <button
                     key={item.rung.key}
                     type="button"
+                    className={
+                      manyLevels ? (item === result ? 'chip-option is-active' : 'chip-option') : undefined
+                    }
                     aria-pressed={item === result}
                     aria-label={`${levelName(item.rung)}${reached ? ', alcançado' : ''}`}
                     onClick={() => setPickedLevel(item.rung.level)}

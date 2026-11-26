@@ -1,4 +1,5 @@
-import type { Character, CharacterLevel, ProvaId } from '../characters'
+import type { Character } from '../characters'
+import { toLevels, type Observation, type Sheet } from './sheet'
 
 /**
  * GTA VI — cargas do levantamento "GTA VI — Exercícios e pesos encontrados",
@@ -13,28 +14,6 @@ import type { Character, CharacterLevel, ProvaId } from '../characters'
  * Só entra o que está Confirmado nas capturas. O que ainda está Pendente fica
  * anotado nos comentários e fora da Arena.
  */
-
-/** O status da informação no levantamento. */
-type Status =
-  /** Exercício e carga aparecem claramente na captura. */
-  | 'confirmado'
-  /** Carga clara, mas o nome do exercício não aparece legível na captura. */
-  | 'associacao-provavel'
-
-interface Observation {
-  /**
-   * As cargas do menu, em kg, da mais leve à mais pesada: a posição é o nível
-   * (a 1ª é a Força 1). Com menos cargas que níveis, os níveis de cima ficam
-   * sem esta prova.
-   */
-  kg: number[]
-  status: Status
-  /** Exercício como o jogo chama, para conferir com o levantamento. */
-  game: string
-  note?: string
-}
-
-type Sheet = Partial<Record<ProvaId, Observation>>
 
 /**
  * Kettlebell: a mesma lista para Jason e Lucia, e para qualquer variação com
@@ -154,19 +133,6 @@ const LUCIA: Sheet = {
   },
   kettlebell: KETTLEBELL,
   // Pendentes: EZ Bar Curls e Leg Extensions.
-}
-
-/** Um nível por posição na lista de cargas: a 1ª carga é a Força 1. */
-function toLevels(sheet: Sheet): CharacterLevel[] {
-  const levels: CharacterLevel[] = []
-  for (const [prova, observation] of Object.entries(sheet) as [ProvaId, Observation][]) {
-    const ordered = [...observation.kg].sort((a, b) => a - b)
-    ordered.forEach((kg, index) => {
-      levels[index] ??= { level: index + 1, loads: {} }
-      levels[index].loads[prova] = kg
-    })
-  }
-  return levels
 }
 
 export const GTA6_CHARACTERS: Character[] = [
