@@ -4,17 +4,22 @@ import { formatNumber, formatSeconds } from './format'
 /**
  * Como a sua força vira um número comparável com o do personagem.
  *
- * - `e1rm`: carga máxima estimada numa repetição (Epley: peso × (1 + reps/30)).
- *   O app treina em faixas de 8 a 12; 40 kg × 10 equivale a uns 53 kg numa só,
- *   e é com isso que o "aguenta X kg" do personagem se compara de forma justa.
  * - `maxWeight`: o maior peso levantado, quantas vezes for — o mesmo número do
- *   "Recorde" na tela do exercício. Mais simples, mas joga contra quem treina
- *   com repetições altas.
+ *   "Recorde" na tela do exercício.
+ * - `e1rm`: carga máxima estimada numa repetição (Epley: peso × (1 + reps/30)).
+ *   40 kg × 10 equivale a uns 53 kg numa só.
  */
 export type StrengthMetric = 'e1rm' | 'maxWeight'
 
-/** A métrica em uso. A outra fica pronta: trocar aqui troca o app inteiro. */
-export const STRENGTH_METRIC: StrengthMetric = 'e1rm'
+/**
+ * A métrica em uso. A outra fica pronta: trocar aqui troca o app inteiro.
+ *
+ * Maior peso levantado: as cargas dos personagens são as do menu do jogo — o
+ * peso de uma série, não um máximo de uma repetição. Com a estimada, o seu
+ * lado era inflado e o deles não: 95 kg × 4 no leg press virava 107,7 kg e
+ * passava os 100 kg da Lucia sem você nunca ter posto 100 kg na máquina.
+ */
+export const STRENGTH_METRIC: StrengthMetric = 'maxWeight'
 
 /**
  * Só as séries dos últimos 90 dias contam. Parou de treinar, a marca cai e o
