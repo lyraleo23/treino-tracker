@@ -2,7 +2,7 @@ import type { Character, CharacterLevel, ProvaId } from '../characters'
 
 /**
  * GTA VI — cargas do levantamento "GTA VI — Exercícios e pesos encontrados",
- * versão 5 (nov/2026), tiradas das capturas do jogo. Os valores ficam em kg
+ * versão 8 (nov/2026), tiradas das capturas do jogo. Os valores ficam em kg
  * exatamente como aparecem na tela (114,4; 154,4...), sem arredondar.
  *
  * As cargas do menu de cada exercício SÃO os Strength Levels: a mais leve é a
@@ -37,6 +37,18 @@ interface Observation {
 type Sheet = Partial<Record<ProvaId, Observation>>
 
 /**
+ * Kettlebell: a mesma lista para Jason e Lucia, e para qualquer variação com
+ * kettlebell que aparecer (regra do levantamento). São três pesos, não
+ * quatro: entram como Força 1 a 3, e a Força 4 fica sem kettlebell.
+ */
+const KETTLEBELL: Observation = {
+  game: 'Kettlebell Swings',
+  kg: [12, 18, 24],
+  status: 'confirmado',
+  note: 'Valores compartilhados entre os personagens.',
+}
+
+/**
  * Jason. A atribuição das capturas é provável — visualmente compatível com
  * ele — até confirmação explícita.
  */
@@ -61,6 +73,11 @@ const JASON: Sheet = {
     kg: [100, 114.4, 140, 154.4],
     status: 'confirmado',
   },
+  terra: {
+    game: 'Deadlifts',
+    kg: [114.4, 134.4, 160, 184.4],
+    status: 'confirmado',
+  },
   'leg-press': {
     game: 'Leg Press',
     kg: [160, 200, 230, 280],
@@ -68,7 +85,7 @@ const JASON: Sheet = {
   },
   puxada: {
     game: 'Lat Pulldowns',
-    kg: [70, 84, 98, 112],
+    kg: [60, 70, 80, 90],
     status: 'confirmado',
   },
   'desenvolvimento-halteres': {
@@ -82,17 +99,9 @@ const JASON: Sheet = {
     kg: [15.8, 18.1, 20.4, 29.4],
     status: 'confirmado',
   },
-  kettlebell: {
-    game: 'Kettlebell Swings',
-    kg: [12, 18, 24],
-    status: 'confirmado',
-    note:
-      'Três pesos exibidos, não quatro: entram como Força 1 a 3, e a Força 4 fica ' +
-      'sem kettlebell até o levantamento confirmar.',
-  },
-  // Pendentes: Deadlifts (cargas antigas sem confirmação visual), Pull-Ups e
-  // Dips (peso corporal), Leg Extensions, EZ Bar Curls, Treadmill e Exercise
-  // Bike.
+  kettlebell: KETTLEBELL,
+  // Pendentes: Pull-Ups e Dips (peso corporal), Leg Extensions, EZ Bar Curls,
+  // Treadmill e Exercise Bike.
 }
 
 const LUCIA: Sheet = {
@@ -104,6 +113,21 @@ const LUCIA: Sheet = {
   agachamento: {
     game: 'Squats',
     kg: [40, 54.4, 74.4, 90],
+    status: 'confirmado',
+  },
+  terra: {
+    game: 'Deadlifts',
+    kg: [60, 80, 90, 110],
+    status: 'confirmado',
+  },
+  'leg-press': {
+    game: 'Leg Press',
+    kg: [60, 100, 134.4, 174.4],
+    status: 'confirmado',
+  },
+  puxada: {
+    game: 'Lat Pulldowns',
+    kg: [25, 35, 45, 55],
     status: 'confirmado',
   },
   crucifixo: {
@@ -128,8 +152,8 @@ const LUCIA: Sheet = {
     status: 'associacao-provavel',
     note: 'Seleção de peso junto ao rack de halteres, sem o nome do exercício legível.',
   },
-  // Pendentes: Lat Pulldowns (110 / 130 lb do primeiro levantamento, sem
-  // confirmação visual), Deadlifts, EZ Bar Curls e Leg Extensions.
+  kettlebell: KETTLEBELL,
+  // Pendentes: EZ Bar Curls e Leg Extensions.
 }
 
 /** Um nível por posição na lista de cargas: a 1ª carga é a Força 1. */
