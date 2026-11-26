@@ -76,20 +76,23 @@ sem backend e sem cadastro. Todos os dados ficam no próprio aparelho (IndexedDB
   fica vermelha e oferece renovar o ciclo — sem nunca impedir de treinar.
 - **Arena**: seus pesos contra os de personagens de jogos. Cada exercício pode
   disputar uma **prova** (Supino, Agachamento, Leg press, Prancha...), escolhida em
-  *Editar → Prova da Arena*; os do catálogo inicial já vêm ligados. A comparação usa a
-  **carga máxima estimada** da melhor série dos **últimos 90 dias** (peso × (1 +
-  reps/30), até 12 repetições) — parou de treinar, a marca cai.
+  *Editar → Prova da Arena*; os do catálogo inicial já vêm ligados. A comparação usa o
+  **maior peso levantado** nos **últimos 90 dias** — o mesmo tipo de número que o
+  personagem tem, o peso de uma série no jogo. Parou de treinar, a marca cai. (A
+  carga máxima estimada, peso × (1 + reps/30), também está no código, em
+  `src/lib/strength.ts`, mas inflava o seu lado da comparação.)
   - **No treino**, o cartão do exercício mostra o rival — o personagem logo acima de
-    você naquela prova — e a carga para vencê-lo nas repetições do bloco working:
-    *Disputando com FULANO · 80 kg · para vencer: 60 kg × 10*. Passou dele, aparece
+    você naquela prova — e a carga para vencê-lo, arredondada para o incremento do
+    aparelho: *Disputando com Lucia Caminos · Força 2 · 100 kg · faltam 5 kg · para
+    vencer: 100 kg*. Passou dele, aparece
     *Você venceu FULANO!* e o próximo assume.
   - **Na aba Arena**, a média de todas as provas em comum (mínimo 2, cada uma
     limitada a 150%) diz **qual personagem você é** — o mais forte que você alcança
     —, quem vem a seguir e o ranking completo. Na tela do exercício, a escada da
     prova mostra quando cada personagem foi vencido.
   - **Personagens** ficam em `src/db/catalog/`, um arquivo por jogo, com as cargas
-    como vieram da fonte (o GTA VI guarda as libras observadas no jogo e converte
-    para kg). Nem todo personagem tem todas as provas. Um personagem pode ter **níveis**
+    como vieram da fonte (o GTA VI guarda os pesos em kg exatamente como aparecem
+    no menu do jogo). Nem todo personagem tem todas as provas. Um personagem pode ter **níveis**
     (a Força 1 a 4 do GTA VI): nome, foto e frase são um só, e cada nível tem as
     próprias cargas e vira um degrau da Arena — "Disputando com Jason Duval · Força
     3", "Você é Lucia Caminos · Força 2". O primeiro elenco é o do **GTA VI** — Jason

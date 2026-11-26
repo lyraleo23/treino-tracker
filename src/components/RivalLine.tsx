@@ -111,7 +111,10 @@ export function RivalLine({ exercise, sessionId, blocks }: Props) {
   if (prova.unit === 's') {
     goal = `segurar ${formatSeconds(theirs)}`
   } else if (STRENGTH_METRIC === 'maxWeight') {
-    goal = `${formatNumber(theirs)} kg`
+    // Arredondada para cima no passo do aparelho: os 134,4 kg da Lucia viram
+    // 135 kg num leg press que sobe de 5 em 5 — carga que dá para montar.
+    const step = exercise.weightStep ?? DEFAULT_WEIGHT_STEP
+    goal = `${formatNumber(loadToReach(theirs, 1, step, 'maxWeight'))} kg`
   } else {
     const reps = repsForGoal(blocks)
     if (reps !== undefined) {
